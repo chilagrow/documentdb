@@ -71,11 +71,11 @@ RUN grep -E "^default_version" pg_documentdb_core/pg_documentdb_core.control | s
 RUN sed -i "s/-/\./g" DOCUMENTDB_VERSION
 
 # Setup the debian packaging
-COPY packaging/debian_files /build/debian
+COPY ferretdb_packaging/debian_files /build/debian
 RUN sed -i "s/POSTGRES_VERSION/${POSTGRES_VERSION}/g" /build/debian/control
 RUN sed -i "s/DOCUMENTDB_VERSION/$(cat DOCUMENTDB_VERSION)/g" /build/debian/changelog
 
-COPY packaging/packaging-entrypoint.sh /usr/local/bin/packaging-entrypoint.sh
+COPY ferretdb_packaging/packaging-entrypoint.sh /usr/local/bin/packaging-entrypoint.sh
 
 # Set the entrypoint
 ENTRYPOINT ["packaging-entrypoint.sh"]
