@@ -50,7 +50,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build
-        run: ./packaging/build_packages.sh --os ${{ matrix.os }} --pg ${{ matrix.pg }} --test-clean-install
+        run: ./ferretdb_packaging/build_packages.sh --os ${{ matrix.os }} --pg ${{ matrix.pg }} --test-clean-install
 
       - name: Upload
         uses: actions/upload-artifact@v4
