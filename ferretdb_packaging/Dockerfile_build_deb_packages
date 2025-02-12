@@ -70,6 +70,10 @@ RUN grep -E "^default_version" pg_documentdb_core/documentdb_core.control | sed 
 # Convert the version to the format expected by the debian packaging
 RUN sed -i "s/-/\./g" DOCUMENTDB_VERSION
 
+# Set pre-release version if GIT_COMMIT is set
+ARG PRE_RELEASE_VERSION=${GIT_HASH:+~pre.$GIT_BRANCH.$GIT_HASH}
+RUN sed -i "s/$/${PRE_RELEASE_VERSION}/" DOCUMENTDB_VERSION
+
 # Setup the debian packaging
 COPY ferretdb_packaging/debian_files /build/debian
 RUN sed -i "s/POSTGRES_VERSION/${POSTGRES_VERSION}/g" /build/debian/control
