@@ -49,8 +49,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Build
-        run: ./ferretdb_packaging/build_packages.sh --os ${{ matrix.os }} --pg ${{ matrix.pg }} --test-clean-install
+      - name: Build pre-release
+        if: github.event_name != 'create' || GITHUB_REF_TYPE != 'tag'
+        run: ./ferretdb_packaging/build_packages.sh --os ${{ matrix.os }} --pg ${{ matrix.pg }} --branch ${{ github.ref_name }} --commit ${{ github.sha }} --test-clean-install
+
+      - name: Build release
+        if: github.event_name == 'create' && GITHUB_REF_TYPE == 'tag'
+        run: ./ferretdb_packaging/build_packages.sh --os ${{ matrix.os }} --pg ${{ matrix.pg }} --tag ${{ github.ref_name }} --test-clean-install
 
       - name: Upload
         uses: actions/upload-artifact@v4

@@ -14,8 +14,9 @@ function show_help {
     echo "  --pg                 PG version to build packages for. Possible values: [15, 16]"
     echo ""
     echo "Optional Arguments:"
-    echo "  --branch             The git branch used for the pre-release built."
-    echo "  --hash               The hash of git commit used for the pre-release built."
+    echo "  --tag                The tag to use for the release build. Not needed for a pre-release build."
+    echo "  --branch             The git branch used for the pre-release build. Not needed for a release build."
+    echo "  --commit             The hash of git commit used for the pre-release build. Not needed for a release build."
     echo "  --test-clean-install Test installing the packages in a clean Docker container."
     echo "  --output-dir         Relative path from the repo root of the directory where to drop the packages. The directory will be created if it doesn't exist. Default: packaging"
     echo "  -h, --help           Display this help message."
@@ -25,6 +26,7 @@ function show_help {
 # Initialize variables
 OS=""
 PG=""
+TAG=""
 BRANCH=""
 HASH=""
 TEST_CLEAN_INSTALL=false
@@ -55,13 +57,17 @@ while [[ $# -gt 0 ]]; do
                     ;;
             esac
             ;;
+        --tag)
+            shift
+            TAG=$1
+            ;;
         --branch)
             shift
             BRANCH=$1
             ;;
-        --hash)
+        --commit)
             shift
-            HASH=$1
+            HASH=$(git rev-parse --short=10 $1)
             ;;
         --test-clean-install)
             TEST_CLEAN_INSTALL=true
@@ -126,7 +132,8 @@ mkdir -p $abs_output_dir
 
 # Build the Docker image while showing the output to the console
 docker build --platform linux/amd64 -t documentdb-build-packages:latest -f ferretdb_packaging/Dockerfile_build_deb_packages \
-    --build-arg BASE_IMAGE=$DOCKER_IMAGE --build-arg POSTGRES_VERSION=$PG --build-arg GIT_BRANCH=$BRANCH --build-arg GIT_HASH=$HASH .
+    --build-arg BASE_IMAGE=$DOCKER_IMAGE --build-arg POSTGRES_VERSION=$PG --build-arg RELEASE_TAG=$TAG \
+    --build-arg PRE_RELEASE_BRANCH=$BRANCH --build-arg PRE_RELEASE_HASH=$HASH .
 
 # Run the Docker container to build the packages
 docker run --platform linux/amd64 --rm -v $abs_output_dir:/output documentdb-build-packages:latest
