@@ -21,19 +21,23 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/sethvargo/go-githubactions"
 )
 
 func main() {
+	versionF := flag.String("version", "", "pg_documentdb/documentdb.control file's default_version field")
 	flag.Parse()
 
 	action := githubactions.New()
 
+	if *versionF == "" {
+		action.Fatalf("%s", "-version flag is empty.")
+	}
+
 	debugEnv(action)
 
-	res, err := define(action.Getenv)
+	res, err := define(*versionF, action.Getenv)
 	if err != nil {
 		action.Fatalf("%s", err)
 	}
@@ -41,18 +45,12 @@ func main() {
 	setResults(action, res)
 }
 
-// result represents Docker image names and tags extracted from the environment.
-type result struct {
-	evaluationImages  []string
-	developmentImages []string
-	productionImages  []string
-}
-
-// semVerTag is a https://semver.org/#is-there-a-suggested-regular-expression-regex-to-check-a-semver-string,
-// but with a leading `v`.
+// documentDBVer is the version syntax used by documentdb.
+// For documentdb.control file, the version is in the format of `0.100-0`.
+// For a release tag it has a leading `v` such as `v0.100-0`.
 //
 //nolint:lll // for readibility
-var semVerTag = regexp.MustCompile(`^v(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)(?:-(?P<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+(?P<buildmetadata>[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$`)
+var documentDBVer = regexp.MustCompile(`^v?(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)-(?P<patch>0|[1-9]\d*)(?:-(?P<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+(?P<buildmetadata>[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$`)
 
 // debugEnv logs all environment variables that start with `GITHUB_` or `INPUT_`
 // in debug level.
@@ -75,65 +73,28 @@ func debugEnv(action *githubactions.Action) {
 }
 
 // Define extracts Docker image names and tags from the environment variables defined by GitHub Actions.
-func define(getenv githubactions.GetenvFunc) (*result, error) {
-	repo := getenv("GITHUB_REPOSITORY")
-
-	// to support GitHub forks
-	parts := strings.Split(strings.ToLower(repo), "/")
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("failed to split %q into owner and name", repo)
+func define(controlDefaultVersion string, getenv githubactions.GetenvFunc) (string, error) {
+	version, err := parseVersion(controlDefaultVersion)
+	if err != nil {
+		return "", err
 	}
-	owner := parts[0]
-	repo = parts[1]
 
-	var res *result
-	var err error
+	var res string
 
 	switch event := getenv("GITHUB_EVENT_NAME"); event {
 	case "pull_request", "pull_request_target":
 		branch := strings.ToLower(getenv("GITHUB_HEAD_REF"))
-		res = defineForPR(owner, repo, branch)
+		res = defineForPR(version, branch)
 
 	case "push", "schedule", "workflow_run":
 		refName := strings.ToLower(getenv("GITHUB_REF_NAME"))
 
 		switch refType := strings.ToLower(getenv("GITHUB_REF_TYPE")); refType {
 		case "branch":
-			res, err = defineForBranch(owner, repo, refName)
+			res, err = defineForBranch(version, refName)
 
 		case "tag":
-			match := semVerTag.FindStringSubmatch(refName)
-			if match == nil || len(match) != semVerTag.NumSubexp()+1 {
-				return nil, fmt.Errorf("unexpected git tag %q", refName)
-			}
-
-			major := match[semVerTag.SubexpIndex("major")]
-			minor := match[semVerTag.SubexpIndex("minor")]
-			patch := match[semVerTag.SubexpIndex("patch")]
-			prerelease := match[semVerTag.SubexpIndex("prerelease")]
-
-			var tags []string
-
-			if prerelease == "" {
-				tags = []string{
-					major,
-					major + "." + minor,
-					major + "." + minor + "." + patch,
-				}
-
-				if major == "2" {
-					tags = append(tags, "latest")
-				}
-			} else {
-				tags = []string{major + "." + minor + "." + patch + "-" + prerelease}
-
-				// while v2 is not GA
-				if major == "2" {
-					tags = append(tags, major)
-				}
-			}
-
-			res = defineForTag(owner, repo, tags)
+			res, err = defineForTag(version, refName)
 
 		default:
 			err = fmt.Errorf("unhandled ref type %q for event %q", refType, event)
@@ -144,162 +105,74 @@ func define(getenv githubactions.GetenvFunc) (*result, error) {
 	}
 
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
-	if res == nil {
+	if res == "" {
 		panic("both res and err are nil")
 	}
-
-	slices.Sort(res.evaluationImages)
-	slices.Sort(res.developmentImages)
-	slices.Sort(res.productionImages)
 
 	return res, nil
 }
 
-// defineForPR defines Docker image names and tags for pull requests.
-func defineForPR(owner, repo, branch string) *result {
+// defineForPR defines package version for pull requests.
+func defineForPR(version, branch string) string {
 	// for branches like "dependabot/submodules/XXX"
 	parts := strings.Split(branch, "/")
 	branch = parts[len(parts)-1]
 
-	res := &result{
-		evaluationImages: []string{
-			fmt.Sprintf("ghcr.io/%s/%s-eval:pr-%s", owner, repo, branch),
-		},
-		developmentImages: []string{
-			fmt.Sprintf("ghcr.io/%s/%s-dev:pr-%s", owner, repo, branch),
-		},
-	}
-
-	// PRs are only for testing; no Quay.io and Docker Hub repos
-
-	return res
+	return fmt.Sprintf("%s~pre.pr-%s", version, branch)
 }
 
-// defineForBranch defines Docker image names and tags for branch builds.
-func defineForBranch(owner, repo, branch string) (*result, error) {
-	// see packages.yml
-	switch {
-	case branch == "main":
-		fallthrough
-	case strings.HasPrefix(branch, "main-"):
-		fallthrough
-	case strings.HasPrefix(branch, "releases/"):
-		branch = strings.ReplaceAll(branch, "/", "-")
-
+// defineForBranch defines package version for branch builds.
+func defineForBranch(version, branch string) (string, error) {
+	switch branch {
+	case "main", "ferretdb":
+		return fmt.Sprintf("%s~pre.%s", version, branch), nil
 	default:
-		return nil, fmt.Errorf("unhandled branch %q", branch)
+		return "", fmt.Errorf("unhandled branch %q", branch)
 	}
-
-	res := &result{
-		evaluationImages: []string{
-			fmt.Sprintf("ghcr.io/%s/%s-eval:%s", owner, repo, branch),
-		},
-		developmentImages: []string{
-			fmt.Sprintf("ghcr.io/%s/%s-dev:%s", owner, repo, branch),
-		},
-	}
-
-	// forks don't have Quay.io and Docker Hub orgs
-	if owner != "ferretdb" {
-		return res, nil
-	}
-
-	// we don't have Quay.io and Docker Hub repos for other GitHub repos
-	if repo != "ferretdb" {
-		return res, nil
-	}
-
-	// TODO https://github.com/FerretDB/FerretDB/issues/4694
-
-	// res.evaluationImages = append(res.evaluationImages, fmt.Sprintf("quay.io/ferretdb/ferretdb-eval:%s", branch))
-	// res.developmentImages = append(res.developmentImages, fmt.Sprintf("quay.io/ferretdb/ferretdb-dev:%s", branch))
-
-	// res.evaluationImages = append(res.evaluationImages, fmt.Sprintf("ferretdb/ferretdb-eval:%s", branch))
-	// res.developmentImages = append(res.developmentImages, fmt.Sprintf("ferretdb/ferretdb-dev:%s", branch))
-
-	return res, nil
 }
 
-// defineForTag defines Docker image names and tags for prerelease tag builds.
-func defineForTag(owner, repo string, tags []string) *result {
-	res := new(result)
-
-	for _, t := range tags {
-		res.evaluationImages = append(res.evaluationImages, fmt.Sprintf("ghcr.io/%s/%s-eval:%s", owner, repo, t))
-		res.developmentImages = append(res.developmentImages, fmt.Sprintf("ghcr.io/%s/%s-dev:%s", owner, repo, t))
-		res.productionImages = append(res.productionImages, fmt.Sprintf("ghcr.io/%s/%s:%s", owner, repo, t))
+// defineForTag defines package version for prerelease tag builds.
+func defineForTag(version string, tag string) (string, error) {
+	tagVersion, err := parseVersion(tag)
+	if err != nil {
+		return "", err
 	}
 
-	// forks don't have Quay.io and Docker Hub orgs
-	if owner != "ferretdb" {
-		return res
+	if tagVersion != version {
+		return "", fmt.Errorf("version in control file and release tag mismatch control:%s tag:%s", version, tagVersion)
 	}
 
-	// we don't have Quay.io and Docker Hub repos for other GitHub repos
-	if repo != "ferretdb" {
-		return res
+	return tagVersion, nil
+}
+
+// parseVersion parses the version string in the format `0.100-0` and
+// returns a normalized version string in `0.100.0` format.
+func parseVersion(version string) (string, error) {
+	match := documentDBVer.FindStringSubmatch(version)
+	if match == nil || len(match) != documentDBVer.NumSubexp()+1 {
+		return "", fmt.Errorf("unexpected version syntax %q", version)
 	}
 
-	// TODO https://github.com/FerretDB/FerretDB/issues/4694
-	// for _, t := range tags {
-	// 	res.evaluationImages = append(res.evaluationImages, fmt.Sprintf("quay.io/ferretdb/ferretdb-eval:%s", t))
-	// 	res.developmentImages = append(res.developmentImages, fmt.Sprintf("quay.io/ferretdb/ferretdb-dev:%s", t))
-	// 	res.productionImages = append(res.productionImages, fmt.Sprintf("quay.io/ferretdb/ferretdb:%s", t))
+	major := match[documentDBVer.SubexpIndex("major")]
+	minor := match[documentDBVer.SubexpIndex("minor")]
+	patch := match[documentDBVer.SubexpIndex("patch")]
+	prerelease := match[documentDBVer.SubexpIndex("prerelease")]
 
-	// 	res.evaluationImages = append(res.evaluationImages, fmt.Sprintf("ferretdb/ferretdb-eval:%s", t))
-	// 	res.developmentImages = append(res.developmentImages, fmt.Sprintf("ferretdb/ferretdb-dev:%s", t))
-	// 	res.productionImages = append(res.productionImages, fmt.Sprintf("ferretdb/ferretdb:%s", t))
-	// }
+	if prerelease == "" {
+		return major + "." + minor + "." + patch, nil
+	}
 
-	return res
+	return major + "." + minor + "." + patch + "~" + prerelease, nil
 }
 
 // setResults sets action output parameters, summary, etc.
-func setResults(action *githubactions.Action, res *result) {
-	var buf strings.Builder
-	w := tabwriter.NewWriter(&buf, 1, 1, 1, ' ', tabwriter.Debug)
-	fmt.Fprintf(w, "\tType\tImage\t\n")
-	fmt.Fprintf(w, "\t----\t-----\t\n")
+func setResults(action *githubactions.Action, res string) {
+	output := fmt.Sprintf("version: %s", res)
 
-	for _, image := range res.evaluationImages {
-		u := imageURL(image)
-		_, _ = fmt.Fprintf(w, "\tEvaluation\t[`%s`](%s)\t\n", image, u)
-	}
-
-	for _, image := range res.developmentImages {
-		u := imageURL(image)
-		_, _ = fmt.Fprintf(w, "\tDevelopment\t[`%s`](%s)\t\n", image, u)
-	}
-
-	for _, image := range res.productionImages {
-		u := imageURL(image)
-		_, _ = fmt.Fprintf(w, "\tProduction\t[`%s`](%s)\t\n", image, u)
-	}
-
-	_ = w.Flush()
-
-	action.AddStepSummary(buf.String())
-	action.Infof("%s", buf.String())
-
-	action.SetOutput("evaluation_images", strings.Join(res.evaluationImages, ","))
-	action.SetOutput("development_images", strings.Join(res.developmentImages, ","))
-	action.SetOutput("production_images", strings.Join(res.productionImages, ","))
-}
-
-// imageURL returns HTML page URL for the given image name and tag.
-func imageURL(name string) string {
-	switch {
-	case strings.HasPrefix(name, "ghcr.io/"):
-		return fmt.Sprintf("https://%s", name)
-	case strings.HasPrefix(name, "quay.io/"):
-		return fmt.Sprintf("https://%s", name)
-	}
-
-	name, _, _ = strings.Cut(name, ":")
-
-	// there is not easy way to get Docker Hub URL for the given tag
-	return fmt.Sprintf("https://hub.docker.com/r/%s/tags", name)
+	action.AddStepSummary(output)
+	action.Infof("%s", output)
+	action.SetOutput("version", res)
 }

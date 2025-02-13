@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"io"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/sethvargo/go-githubactions"
@@ -39,14 +38,12 @@ func getEnvFunc(t *testing.T, env map[string]string) func(string) string {
 }
 
 type testCase struct {
-	env      map[string]string
-	expected *result
+	env            map[string]string
+	defaultVersion string // pg_documentdb/documentdb.control file's default_version field
+	expected       string
 }
 
 func TestDefine(t *testing.T) {
-	// TODO https://github.com/FerretDB/FerretDB/issues/4694
-	t.Skip("https://github.com/FerretDB/FerretDB/issues/4694")
-
 	for name, tc := range map[string]testCase{
 		"pull_request": {
 			env: map[string]string{
@@ -55,34 +52,9 @@ func TestDefine(t *testing.T) {
 				"GITHUB_HEAD_REF":   "define-docker-tag",
 				"GITHUB_REF_NAME":   "1/merge",
 				"GITHUB_REF_TYPE":   "branch",
-				"GITHUB_REPOSITORY": "FerretDB/FerretDB",
 			},
-			expected: &result{
-				evaluationImages: []string{
-					"ghcr.io/ferretdb/ferretdb-eval:pr-define-docker-tag",
-				},
-				developmentImages: []string{
-					"ghcr.io/ferretdb/ferretdb-dev:pr-define-docker-tag",
-				},
-			},
-		},
-		"pull_request-other": {
-			env: map[string]string{
-				"GITHUB_BASE_REF":   "main",
-				"GITHUB_EVENT_NAME": "pull_request",
-				"GITHUB_HEAD_REF":   "define-docker-tag",
-				"GITHUB_REF_NAME":   "1/merge",
-				"GITHUB_REF_TYPE":   "branch",
-				"GITHUB_REPOSITORY": "OtherOrg/OtherRepo",
-			},
-			expected: &result{
-				evaluationImages: []string{
-					"ghcr.io/otherorg/otherrepo-eval:pr-define-docker-tag",
-				},
-				developmentImages: []string{
-					"ghcr.io/otherorg/otherrepo-dev:pr-define-docker-tag",
-				},
-			},
+			defaultVersion: "0.100-0",
+			expected:       "0.100.0~pre.pr-define-docker-tag",
 		},
 
 		"pull_request/dependabot": {
@@ -92,34 +64,9 @@ func TestDefine(t *testing.T) {
 				"GITHUB_HEAD_REF":   "dependabot/submodules/tests/mongo-go-driver-29d768e",
 				"GITHUB_REF_NAME":   "58/merge",
 				"GITHUB_REF_TYPE":   "branch",
-				"GITHUB_REPOSITORY": "FerretDB/FerretDB",
 			},
-			expected: &result{
-				evaluationImages: []string{
-					"ghcr.io/ferretdb/ferretdb-eval:pr-mongo-go-driver-29d768e",
-				},
-				developmentImages: []string{
-					"ghcr.io/ferretdb/ferretdb-dev:pr-mongo-go-driver-29d768e",
-				},
-			},
-		},
-		"pull_request/dependabot-other": {
-			env: map[string]string{
-				"GITHUB_BASE_REF":   "main",
-				"GITHUB_EVENT_NAME": "pull_request",
-				"GITHUB_HEAD_REF":   "dependabot/submodules/tests/mongo-go-driver-29d768e",
-				"GITHUB_REF_NAME":   "58/merge",
-				"GITHUB_REF_TYPE":   "branch",
-				"GITHUB_REPOSITORY": "OtherOrg/OtherRepo",
-			},
-			expected: &result{
-				evaluationImages: []string{
-					"ghcr.io/otherorg/otherrepo-eval:pr-mongo-go-driver-29d768e",
-				},
-				developmentImages: []string{
-					"ghcr.io/otherorg/otherrepo-dev:pr-mongo-go-driver-29d768e",
-				},
-			},
+			defaultVersion: "0.100-0",
+			expected:       "0.100.0~pre.pr-mongo-go-driver-29d768e",
 		},
 
 		"pull_request_target": {
@@ -129,34 +76,9 @@ func TestDefine(t *testing.T) {
 				"GITHUB_HEAD_REF":   "define-docker-tag",
 				"GITHUB_REF_NAME":   "main",
 				"GITHUB_REF_TYPE":   "branch",
-				"GITHUB_REPOSITORY": "FerretDB/FerretDB",
 			},
-			expected: &result{
-				evaluationImages: []string{
-					"ghcr.io/ferretdb/ferretdb-eval:pr-define-docker-tag",
-				},
-				developmentImages: []string{
-					"ghcr.io/ferretdb/ferretdb-dev:pr-define-docker-tag",
-				},
-			},
-		},
-		"pull_request_target-other": {
-			env: map[string]string{
-				"GITHUB_BASE_REF":   "main",
-				"GITHUB_EVENT_NAME": "pull_request_target",
-				"GITHUB_HEAD_REF":   "define-docker-tag",
-				"GITHUB_REF_NAME":   "main",
-				"GITHUB_REF_TYPE":   "branch",
-				"GITHUB_REPOSITORY": "OtherOrg/OtherRepo",
-			},
-			expected: &result{
-				evaluationImages: []string{
-					"ghcr.io/otherorg/otherrepo-eval:pr-define-docker-tag",
-				},
-				developmentImages: []string{
-					"ghcr.io/otherorg/otherrepo-dev:pr-define-docker-tag",
-				},
-			},
+			defaultVersion: "0.100-0",
+			expected:       "0.100.0~pre.pr-define-docker-tag",
 		},
 
 		"push/main": {
@@ -166,119 +88,28 @@ func TestDefine(t *testing.T) {
 				"GITHUB_HEAD_REF":   "",
 				"GITHUB_REF_NAME":   "main",
 				"GITHUB_REF_TYPE":   "branch",
-				"GITHUB_REPOSITORY": "FerretDB/FerretDB",
 			},
-			expected: &result{
-				evaluationImages: []string{
-					"ferretdb/ferretdb-eval:main",
-					"ghcr.io/ferretdb/ferretdb-eval:main",
-					"quay.io/ferretdb/ferretdb-eval:main",
-				},
-				developmentImages: []string{
-					"ferretdb/ferretdb-dev:main",
-					"ghcr.io/ferretdb/ferretdb-dev:main",
-					"quay.io/ferretdb/ferretdb-dev:main",
-				},
-			},
+			defaultVersion: "0.100-0",
+			expected:       "0.100.0~pre.main",
 		},
-		"push/main-other": {
+		"push/ferretdb": {
 			env: map[string]string{
 				"GITHUB_BASE_REF":   "",
 				"GITHUB_EVENT_NAME": "push",
 				"GITHUB_HEAD_REF":   "",
-				"GITHUB_REF_NAME":   "main",
+				"GITHUB_REF_NAME":   "ferretdb",
 				"GITHUB_REF_TYPE":   "branch",
-				"GITHUB_REPOSITORY": "OtherOrg/OtherRepo",
 			},
-			expected: &result{
-				evaluationImages: []string{
-					"ghcr.io/otherorg/otherrepo-eval:main",
-				},
-				developmentImages: []string{
-					"ghcr.io/otherorg/otherrepo-dev:main",
-				},
-			},
+			defaultVersion: "0.100-0",
+			expected:       "0.100.0~pre.ferretdb",
 		},
-
-		"push/main-v1": {
+		"push/other": {
 			env: map[string]string{
 				"GITHUB_BASE_REF":   "",
 				"GITHUB_EVENT_NAME": "push",
 				"GITHUB_HEAD_REF":   "",
-				"GITHUB_REF_NAME":   "main-v1",
-				"GITHUB_REF_TYPE":   "branch",
-				"GITHUB_REPOSITORY": "FerretDB/FerretDB",
-			},
-			expected: &result{
-				evaluationImages: []string{
-					"ferretdb/ferretdb-eval:main-v1",
-					"ghcr.io/ferretdb/ferretdb-eval:main-v1",
-					"quay.io/ferretdb/ferretdb-eval:main-v1",
-				},
-				developmentImages: []string{
-					"ferretdb/ferretdb-dev:main-v1",
-					"ghcr.io/ferretdb/ferretdb-dev:main-v1",
-					"quay.io/ferretdb/ferretdb-dev:main-v1",
-				},
-			},
-		},
-		"push/main-v1-other": {
-			env: map[string]string{
-				"GITHUB_BASE_REF":   "",
-				"GITHUB_EVENT_NAME": "push",
-				"GITHUB_HEAD_REF":   "",
-				"GITHUB_REF_NAME":   "main-v1",
-				"GITHUB_REF_TYPE":   "branch",
-				"GITHUB_REPOSITORY": "OtherOrg/OtherRepo",
-			},
-			expected: &result{
-				evaluationImages: []string{
-					"ghcr.io/otherorg/otherrepo-eval:main-v1",
-				},
-				developmentImages: []string{
-					"ghcr.io/otherorg/otherrepo-dev:main-v1",
-				},
-			},
-		},
-
-		"push/release": {
-			env: map[string]string{
-				"GITHUB_BASE_REF":   "",
-				"GITHUB_EVENT_NAME": "push",
-				"GITHUB_HEAD_REF":   "",
-				"GITHUB_REF_NAME":   "releases/2.1",
-				"GITHUB_REF_TYPE":   "branch",
-				"GITHUB_REPOSITORY": "FerretDB/FerretDB",
-			},
-			expected: &result{
-				evaluationImages: []string{
-					"ferretdb/ferretdb-eval:releases-2.1",
-					"ghcr.io/ferretdb/ferretdb-eval:releases-2.1",
-					"quay.io/ferretdb/ferretdb-eval:releases-2.1",
-				},
-				developmentImages: []string{
-					"ferretdb/ferretdb-dev:releases-2.1",
-					"ghcr.io/ferretdb/ferretdb-dev:releases-2.1",
-					"quay.io/ferretdb/ferretdb-dev:releases-2.1",
-				},
-			},
-		},
-		"push/release-other": {
-			env: map[string]string{
-				"GITHUB_BASE_REF":   "",
-				"GITHUB_EVENT_NAME": "push",
-				"GITHUB_HEAD_REF":   "",
-				"GITHUB_REF_NAME":   "releases/2.1",
-				"GITHUB_REF_TYPE":   "branch",
-				"GITHUB_REPOSITORY": "OtherOrg/OtherRepo",
-			},
-			expected: &result{
-				evaluationImages: []string{
-					"ghcr.io/otherorg/otherrepo-eval:releases-2.1",
-				},
-				developmentImages: []string{
-					"ghcr.io/otherorg/otherrepo-dev:releases-2.1",
-				},
+				"GITHUB_REF_NAME":   "releases",
+				"GITHUB_REF_TYPE":   "other", // not main or ferretdb branch
 			},
 		},
 
@@ -287,48 +118,11 @@ func TestDefine(t *testing.T) {
 				"GITHUB_BASE_REF":   "",
 				"GITHUB_EVENT_NAME": "push",
 				"GITHUB_HEAD_REF":   "",
-				"GITHUB_REF_NAME":   "v1.26.0-beta",
+				"GITHUB_REF_NAME":   "v0.100-0-beta",
 				"GITHUB_REF_TYPE":   "tag",
-				"GITHUB_REPOSITORY": "FerretDB/FerretDB",
 			},
-			expected: &result{
-				evaluationImages: []string{
-					"ferretdb/ferretdb-eval:1.26.0-beta",
-					"ghcr.io/ferretdb/ferretdb-eval:1.26.0-beta",
-					"quay.io/ferretdb/ferretdb-eval:1.26.0-beta",
-				},
-				developmentImages: []string{
-					"ferretdb/ferretdb-dev:1.26.0-beta",
-					"ghcr.io/ferretdb/ferretdb-dev:1.26.0-beta",
-					"quay.io/ferretdb/ferretdb-dev:1.26.0-beta",
-				},
-				productionImages: []string{
-					"ferretdb/ferretdb:1.26.0-beta",
-					"ghcr.io/ferretdb/ferretdb:1.26.0-beta",
-					"quay.io/ferretdb/ferretdb:1.26.0-beta",
-				},
-			},
-		},
-		"push/tag/prerelease1-other": {
-			env: map[string]string{
-				"GITHUB_BASE_REF":   "",
-				"GITHUB_EVENT_NAME": "push",
-				"GITHUB_HEAD_REF":   "",
-				"GITHUB_REF_NAME":   "v1.26.0-beta",
-				"GITHUB_REF_TYPE":   "tag",
-				"GITHUB_REPOSITORY": "OtherOrg/OtherRepo",
-			},
-			expected: &result{
-				evaluationImages: []string{
-					"ghcr.io/otherorg/otherrepo-eval:1.26.0-beta",
-				},
-				developmentImages: []string{
-					"ghcr.io/otherorg/otherrepo-dev:1.26.0-beta",
-				},
-				productionImages: []string{
-					"ghcr.io/otherorg/otherrepo:1.26.0-beta",
-				},
-			},
+			defaultVersion: "0.100-0-beta",
+			expected:       "0.100.0~beta",
 		},
 
 		"push/tag/prerelease2": {
@@ -336,62 +130,11 @@ func TestDefine(t *testing.T) {
 				"GITHUB_BASE_REF":   "",
 				"GITHUB_EVENT_NAME": "push",
 				"GITHUB_HEAD_REF":   "",
-				"GITHUB_REF_NAME":   "v2.0.0-rc.1",
+				"GITHUB_REF_NAME":   "v0.100-0-rc.1",
 				"GITHUB_REF_TYPE":   "tag",
-				"GITHUB_REPOSITORY": "FerretDB/FerretDB",
 			},
-			expected: &result{
-				// use :major even for prereleases while v2 is not GA
-				evaluationImages: []string{
-					"ferretdb/ferretdb-eval:2",
-					"ferretdb/ferretdb-eval:2.0.0-rc.1",
-					"ghcr.io/ferretdb/ferretdb-eval:2",
-					"ghcr.io/ferretdb/ferretdb-eval:2.0.0-rc.1",
-					"quay.io/ferretdb/ferretdb-eval:2",
-					"quay.io/ferretdb/ferretdb-eval:2.0.0-rc.1",
-				},
-				developmentImages: []string{
-					"ferretdb/ferretdb-dev:2",
-					"ferretdb/ferretdb-dev:2.0.0-rc.1",
-					"ghcr.io/ferretdb/ferretdb-dev:2",
-					"ghcr.io/ferretdb/ferretdb-dev:2.0.0-rc.1",
-					"quay.io/ferretdb/ferretdb-dev:2",
-					"quay.io/ferretdb/ferretdb-dev:2.0.0-rc.1",
-				},
-				productionImages: []string{
-					"ferretdb/ferretdb:2",
-					"ferretdb/ferretdb:2.0.0-rc.1",
-					"ghcr.io/ferretdb/ferretdb:2",
-					"ghcr.io/ferretdb/ferretdb:2.0.0-rc.1",
-					"quay.io/ferretdb/ferretdb:2",
-					"quay.io/ferretdb/ferretdb:2.0.0-rc.1",
-				},
-			},
-		},
-		"push/tag/prerelease2-other": {
-			env: map[string]string{
-				"GITHUB_BASE_REF":   "",
-				"GITHUB_EVENT_NAME": "push",
-				"GITHUB_HEAD_REF":   "",
-				"GITHUB_REF_NAME":   "v2.0.0-rc.1",
-				"GITHUB_REF_TYPE":   "tag",
-				"GITHUB_REPOSITORY": "OtherOrg/OtherRepo",
-			},
-			expected: &result{
-				// use :major even for prereleases while v2 is not GA
-				evaluationImages: []string{
-					"ghcr.io/otherorg/otherrepo-eval:2",
-					"ghcr.io/otherorg/otherrepo-eval:2.0.0-rc.1",
-				},
-				developmentImages: []string{
-					"ghcr.io/otherorg/otherrepo-dev:2",
-					"ghcr.io/otherorg/otherrepo-dev:2.0.0-rc.1",
-				},
-				productionImages: []string{
-					"ghcr.io/otherorg/otherrepo:2",
-					"ghcr.io/otherorg/otherrepo:2.0.0-rc.1",
-				},
-			},
+			defaultVersion: "0.100-0-rc.1",
+			expected:       "0.100.0~rc.1",
 		},
 
 		"push/tag/release1": {
@@ -399,159 +142,11 @@ func TestDefine(t *testing.T) {
 				"GITHUB_BASE_REF":   "",
 				"GITHUB_EVENT_NAME": "push",
 				"GITHUB_HEAD_REF":   "",
-				"GITHUB_REF_NAME":   "v1.26.0",
+				"GITHUB_REF_NAME":   "v0.100-0",
 				"GITHUB_REF_TYPE":   "tag",
-				"GITHUB_REPOSITORY": "FerretDB/FerretDB",
 			},
-			expected: &result{
-				// latest is v2
-				evaluationImages: []string{
-					"ferretdb/ferretdb-eval:1",
-					"ferretdb/ferretdb-eval:1.26",
-					"ferretdb/ferretdb-eval:1.26.0",
-					"ghcr.io/ferretdb/ferretdb-eval:1",
-					"ghcr.io/ferretdb/ferretdb-eval:1.26",
-					"ghcr.io/ferretdb/ferretdb-eval:1.26.0",
-					"quay.io/ferretdb/ferretdb-eval:1",
-					"quay.io/ferretdb/ferretdb-eval:1.26",
-					"quay.io/ferretdb/ferretdb-eval:1.26.0",
-				},
-				developmentImages: []string{
-					"ferretdb/ferretdb-dev:1",
-					"ferretdb/ferretdb-dev:1.26",
-					"ferretdb/ferretdb-dev:1.26.0",
-					"ghcr.io/ferretdb/ferretdb-dev:1",
-					"ghcr.io/ferretdb/ferretdb-dev:1.26",
-					"ghcr.io/ferretdb/ferretdb-dev:1.26.0",
-					"quay.io/ferretdb/ferretdb-dev:1",
-					"quay.io/ferretdb/ferretdb-dev:1.26",
-					"quay.io/ferretdb/ferretdb-dev:1.26.0",
-				},
-				productionImages: []string{
-					"ferretdb/ferretdb:1",
-					"ferretdb/ferretdb:1.26",
-					"ferretdb/ferretdb:1.26.0",
-					"ghcr.io/ferretdb/ferretdb:1",
-					"ghcr.io/ferretdb/ferretdb:1.26",
-					"ghcr.io/ferretdb/ferretdb:1.26.0",
-					"quay.io/ferretdb/ferretdb:1",
-					"quay.io/ferretdb/ferretdb:1.26",
-					"quay.io/ferretdb/ferretdb:1.26.0",
-				},
-			},
-		},
-		"push/tag/release1-other": {
-			env: map[string]string{
-				"GITHUB_BASE_REF":   "",
-				"GITHUB_EVENT_NAME": "push",
-				"GITHUB_HEAD_REF":   "",
-				"GITHUB_REF_NAME":   "v1.26.0",
-				"GITHUB_REF_TYPE":   "tag",
-				"GITHUB_REPOSITORY": "OtherOrg/OtherRepo",
-			},
-			expected: &result{
-				// latest is v2
-				evaluationImages: []string{
-					"ghcr.io/otherorg/otherrepo-eval:1",
-					"ghcr.io/otherorg/otherrepo-eval:1.26",
-					"ghcr.io/otherorg/otherrepo-eval:1.26.0",
-				},
-				developmentImages: []string{
-					"ghcr.io/otherorg/otherrepo-dev:1",
-					"ghcr.io/otherorg/otherrepo-dev:1.26",
-					"ghcr.io/otherorg/otherrepo-dev:1.26.0",
-				},
-				productionImages: []string{
-					"ghcr.io/otherorg/otherrepo:1",
-					"ghcr.io/otherorg/otherrepo:1.26",
-					"ghcr.io/otherorg/otherrepo:1.26.0",
-				},
-			},
-		},
-
-		"push/tag/release2": {
-			env: map[string]string{
-				"GITHUB_BASE_REF":   "",
-				"GITHUB_EVENT_NAME": "push",
-				"GITHUB_HEAD_REF":   "",
-				"GITHUB_REF_NAME":   "v2.0.0",
-				"GITHUB_REF_TYPE":   "tag",
-				"GITHUB_REPOSITORY": "FerretDB/FerretDB",
-			},
-			expected: &result{
-				evaluationImages: []string{
-					"ferretdb/ferretdb-eval:2",
-					"ferretdb/ferretdb-eval:2.0",
-					"ferretdb/ferretdb-eval:2.0.0",
-					"ferretdb/ferretdb-eval:latest",
-					"ghcr.io/ferretdb/ferretdb-eval:2",
-					"ghcr.io/ferretdb/ferretdb-eval:2.0",
-					"ghcr.io/ferretdb/ferretdb-eval:2.0.0",
-					"ghcr.io/ferretdb/ferretdb-eval:latest",
-					"quay.io/ferretdb/ferretdb-eval:2",
-					"quay.io/ferretdb/ferretdb-eval:2.0",
-					"quay.io/ferretdb/ferretdb-eval:2.0.0",
-					"quay.io/ferretdb/ferretdb-eval:latest",
-				},
-				developmentImages: []string{
-					"ferretdb/ferretdb-dev:2",
-					"ferretdb/ferretdb-dev:2.0",
-					"ferretdb/ferretdb-dev:2.0.0",
-					"ferretdb/ferretdb-dev:latest",
-					"ghcr.io/ferretdb/ferretdb-dev:2",
-					"ghcr.io/ferretdb/ferretdb-dev:2.0",
-					"ghcr.io/ferretdb/ferretdb-dev:2.0.0",
-					"ghcr.io/ferretdb/ferretdb-dev:latest",
-					"quay.io/ferretdb/ferretdb-dev:2",
-					"quay.io/ferretdb/ferretdb-dev:2.0",
-					"quay.io/ferretdb/ferretdb-dev:2.0.0",
-					"quay.io/ferretdb/ferretdb-dev:latest",
-				},
-				productionImages: []string{
-					"ferretdb/ferretdb:2",
-					"ferretdb/ferretdb:2.0",
-					"ferretdb/ferretdb:2.0.0",
-					"ferretdb/ferretdb:latest",
-					"ghcr.io/ferretdb/ferretdb:2",
-					"ghcr.io/ferretdb/ferretdb:2.0",
-					"ghcr.io/ferretdb/ferretdb:2.0.0",
-					"ghcr.io/ferretdb/ferretdb:latest",
-					"quay.io/ferretdb/ferretdb:2",
-					"quay.io/ferretdb/ferretdb:2.0",
-					"quay.io/ferretdb/ferretdb:2.0.0",
-					"quay.io/ferretdb/ferretdb:latest",
-				},
-			},
-		},
-		"push/tag/release2-other": {
-			env: map[string]string{
-				"GITHUB_BASE_REF":   "",
-				"GITHUB_EVENT_NAME": "push",
-				"GITHUB_HEAD_REF":   "",
-				"GITHUB_REF_NAME":   "v2.0.0",
-				"GITHUB_REF_TYPE":   "tag",
-				"GITHUB_REPOSITORY": "OtherOrg/OtherRepo",
-			},
-			expected: &result{
-				evaluationImages: []string{
-					"ghcr.io/otherorg/otherrepo-eval:2",
-					"ghcr.io/otherorg/otherrepo-eval:2.0",
-					"ghcr.io/otherorg/otherrepo-eval:2.0.0",
-					"ghcr.io/otherorg/otherrepo-eval:latest",
-				},
-				developmentImages: []string{
-					"ghcr.io/otherorg/otherrepo-dev:2",
-					"ghcr.io/otherorg/otherrepo-dev:2.0",
-					"ghcr.io/otherorg/otherrepo-dev:2.0.0",
-					"ghcr.io/otherorg/otherrepo-dev:latest",
-				},
-				productionImages: []string{
-					"ghcr.io/otherorg/otherrepo:2",
-					"ghcr.io/otherorg/otherrepo:2.0",
-					"ghcr.io/otherorg/otherrepo:2.0.0",
-					"ghcr.io/otherorg/otherrepo:latest",
-				},
-			},
+			defaultVersion: "0.100-0",
+			expected:       "0.100.0",
 		},
 
 		"push/tag/wrong": {
@@ -559,19 +154,8 @@ func TestDefine(t *testing.T) {
 				"GITHUB_BASE_REF":   "",
 				"GITHUB_EVENT_NAME": "push",
 				"GITHUB_HEAD_REF":   "",
-				"GITHUB_REF_NAME":   "2.1.0", // no leading v
+				"GITHUB_REF_NAME":   "0.100-0", // no leading v
 				"GITHUB_REF_TYPE":   "tag",
-				"GITHUB_REPOSITORY": "FerretDB/FerretDB",
-			},
-		},
-		"push/tag/wrong-other": {
-			env: map[string]string{
-				"GITHUB_BASE_REF":   "",
-				"GITHUB_EVENT_NAME": "push",
-				"GITHUB_HEAD_REF":   "",
-				"GITHUB_REF_NAME":   "2.1.0", // no leading v
-				"GITHUB_REF_TYPE":   "tag",
-				"GITHUB_REPOSITORY": "OtherOrg/OtherRepo",
 			},
 		},
 
@@ -584,36 +168,8 @@ func TestDefine(t *testing.T) {
 				"GITHUB_REF_TYPE":   "branch",
 				"GITHUB_REPOSITORY": "FerretDB/FerretDB",
 			},
-			expected: &result{
-				evaluationImages: []string{
-					"ferretdb/ferretdb-eval:main",
-					"ghcr.io/ferretdb/ferretdb-eval:main",
-					"quay.io/ferretdb/ferretdb-eval:main",
-				},
-				developmentImages: []string{
-					"ferretdb/ferretdb-dev:main",
-					"ghcr.io/ferretdb/ferretdb-dev:main",
-					"quay.io/ferretdb/ferretdb-dev:main",
-				},
-			},
-		},
-		"schedule-other": {
-			env: map[string]string{
-				"GITHUB_BASE_REF":   "",
-				"GITHUB_EVENT_NAME": "schedule",
-				"GITHUB_HEAD_REF":   "",
-				"GITHUB_REF_NAME":   "main",
-				"GITHUB_REF_TYPE":   "branch",
-				"GITHUB_REPOSITORY": "OtherOrg/OtherRepo",
-			},
-			expected: &result{
-				evaluationImages: []string{
-					"ghcr.io/otherorg/otherrepo-eval:main",
-				},
-				developmentImages: []string{
-					"ghcr.io/otherorg/otherrepo-dev:main",
-				},
-			},
+			defaultVersion: "0.100-0",
+			expected:       "0.100.0~pre.main",
 		},
 
 		"workflow_run": {
@@ -625,41 +181,13 @@ func TestDefine(t *testing.T) {
 				"GITHUB_REF_TYPE":   "branch",
 				"GITHUB_REPOSITORY": "FerretDB/FerretDB",
 			},
-			expected: &result{
-				evaluationImages: []string{
-					"ferretdb/ferretdb-eval:main",
-					"ghcr.io/ferretdb/ferretdb-eval:main",
-					"quay.io/ferretdb/ferretdb-eval:main",
-				},
-				developmentImages: []string{
-					"ferretdb/ferretdb-dev:main",
-					"ghcr.io/ferretdb/ferretdb-dev:main",
-					"quay.io/ferretdb/ferretdb-dev:main",
-				},
-			},
-		},
-		"workflow_run-other": {
-			env: map[string]string{
-				"GITHUB_BASE_REF":   "",
-				"GITHUB_EVENT_NAME": "workflow_run",
-				"GITHUB_HEAD_REF":   "",
-				"GITHUB_REF_NAME":   "main",
-				"GITHUB_REF_TYPE":   "branch",
-				"GITHUB_REPOSITORY": "OtherOrg/OtherRepo",
-			},
-			expected: &result{
-				evaluationImages: []string{
-					"ghcr.io/otherorg/otherrepo-eval:main",
-				},
-				developmentImages: []string{
-					"ghcr.io/otherorg/otherrepo-dev:main",
-				},
-			},
+			defaultVersion: "0.100-0",
+			expected:       "0.100.0~pre.main",
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			actual, err := define(getEnvFunc(t, tc.env))
-			if tc.expected == nil {
+			actual, err := define(tc.defaultVersion, getEnvFunc(t, tc.env))
+			if tc.expected == "" {
 				require.Error(t, err)
 				return
 			}
@@ -668,25 +196,6 @@ func TestDefine(t *testing.T) {
 			assert.Equal(t, tc.expected, actual)
 		})
 	}
-}
-
-func TestImageURL(t *testing.T) {
-	// expected URLs should work
-	assert.Equal(
-		t,
-		"https://ghcr.io/ferretdb/ferretdb-eval:pr-define-docker-tag",
-		imageURL("ghcr.io/ferretdb/ferretdb-eval:pr-define-docker-tag"),
-	)
-	assert.Equal(
-		t,
-		"https://quay.io/ferretdb/ferretdb-eval:pr-define-docker-tag",
-		imageURL("quay.io/ferretdb/ferretdb-eval:pr-define-docker-tag"),
-	)
-	assert.Equal(
-		t,
-		"https://hub.docker.com/r/ferretdb/ferretdb-eval/tags",
-		imageURL("ferretdb/ferretdb-eval:pr-define-docker-tag"),
-	)
 }
 
 func TestResults(t *testing.T) {
@@ -707,53 +216,20 @@ func TestResults(t *testing.T) {
 	})
 	action := githubactions.New(githubactions.WithGetenv(getenv), githubactions.WithWriter(&stdout))
 
-	result := &result{
-		evaluationImages: []string{
-			"ferretdb/ferretdb-eval:2.1.0",
-		},
-		developmentImages: []string{
-			"ghcr.io/ferretdb/ferretdb-dev:2",
-		},
-		productionImages: []string{
-			"quay.io/ferretdb/ferretdb:latest",
-		},
-	}
+	version := "0.100.0~pre.main"
 
-	setResults(action, result)
+	setResults(action, version)
 
-	expectedStdout := strings.ReplaceAll(`
- |Type        |Image                                                                                  |
- |----        |-----                                                                                  |
- |Evaluation  |['ferretdb/ferretdb-eval:2.1.0'](https://hub.docker.com/r/ferretdb/ferretdb-eval/tags) |
- |Development |['ghcr.io/ferretdb/ferretdb-dev:2'](https://ghcr.io/ferretdb/ferretdb-dev:2)           |
- |Production  |['quay.io/ferretdb/ferretdb:latest'](https://quay.io/ferretdb/ferretdb:latest)         |
+	expected := "version: 0.100.0~pre.main\n"
+	assert.Equal(t, expected, stdout.String(), "stdout does not match")
 
-`[1:], "'", "`",
-	)
-	assert.Equal(t, expectedStdout, stdout.String(), "stdout does not match")
-
-	expectedSummary := strings.ReplaceAll(`
- |Type        |Image                                                                                  |
- |----        |-----                                                                                  |
- |Evaluation  |['ferretdb/ferretdb-eval:2.1.0'](https://hub.docker.com/r/ferretdb/ferretdb-eval/tags) |
- |Development |['ghcr.io/ferretdb/ferretdb-dev:2'](https://ghcr.io/ferretdb/ferretdb-dev:2)           |
- |Production  |['quay.io/ferretdb/ferretdb:latest'](https://quay.io/ferretdb/ferretdb:latest)         |
-
-`[1:], "'", "`",
-	)
 	b, err := io.ReadAll(summaryF)
 	require.NoError(t, err)
-	assert.Equal(t, expectedSummary, string(b), "summary does not match")
+	assert.Equal(t, expected, string(b), "summary does not match")
 
 	expectedOutput := `
-evaluation_images<<_GitHubActionsFileCommandDelimeter_
-ferretdb/ferretdb-eval:2.1.0
-_GitHubActionsFileCommandDelimeter_
-development_images<<_GitHubActionsFileCommandDelimeter_
-ghcr.io/ferretdb/ferretdb-dev:2
-_GitHubActionsFileCommandDelimeter_
-production_images<<_GitHubActionsFileCommandDelimeter_
-quay.io/ferretdb/ferretdb:latest
+version<<_GitHubActionsFileCommandDelimeter_
+0.100.0~pre.main
 _GitHubActionsFileCommandDelimeter_
 `[1:]
 	b, err = io.ReadAll(outputF)
