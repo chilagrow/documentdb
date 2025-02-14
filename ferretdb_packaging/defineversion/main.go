@@ -144,14 +144,14 @@ func define(controlDefaultVersion string, getenv githubactions.GetenvFunc) (stri
 }
 
 // defineForPR defines package version for pull requests.
-// It replaces branch name characters not allowed in debian package version with `_`.
+// It replaces branch name with allowed chars of debian package version.
 func defineForPR(version, branch string) string {
 	// for branches like "dependabot/submodules/XXX"
 	parts := strings.Split(branch, "/")
 	branch = parts[len(parts)-1]
-	branch = debianVer.ReplaceAllString(branch, "_")
+	branch = debianVer.ReplaceAllString(branch, "~")
 
-	return fmt.Sprintf("%s~pre.pr_%s", version, branch)
+	return fmt.Sprintf("%s~pre.pr~%s", version, branch)
 }
 
 // defineForBranch defines package version for branch builds.
