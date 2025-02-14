@@ -66,6 +66,7 @@ jobs:
         uses: FerretDB/github-actions/setup-go@main
 
       - name: Define package tag version
+        id: tag
         run: |
           cd ferretdb_packaging
           go mod tidy
