@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package main defines debian version number for CI.
 package main
 
 import (
@@ -100,7 +101,9 @@ func controlVersion(f string) (string, error) {
 	return version, nil
 }
 
-// Define extracts Docker image names and tags from the environment variables defined by GitHub Actions.
+// Define extracts debian version number from the environment variables defined by GitHub Actions.
+// If the release tag was set, it checks the tag matches with the control version
+// and returns an error on mismatch.
 func define(controlDefaultVersion string, getenv githubactions.GetenvFunc) (string, error) {
 	version, err := parseVersion(controlDefaultVersion)
 	if err != nil {
@@ -151,34 +154,35 @@ func defineForPR(version, branch string) string {
 	branch = parts[len(parts)-1]
 	branch = debianVer.ReplaceAllString(branch, "~")
 
-	return fmt.Sprintf("%s~pre.pr~%s", version, branch)
+	return fmt.Sprintf("%s~pr~%s", version, branch)
 }
 
 // defineForBranch defines package version for branch builds.
 func defineForBranch(version, branch string) (string, error) {
 	switch branch {
 	case "main", "ferretdb":
-		return fmt.Sprintf("%s~pre.%s", version, branch), nil
+		return fmt.Sprintf("%s~%s", version, branch), nil
 	default:
 		return "", fmt.Errorf("unhandled branch %q", branch)
 	}
 }
 
-// defineForTag defines package version for prerelease tag builds.
-func defineForTag(version string, tag string) (string, error) {
+// defineForTag defines package version for release build.
+// It returns an error if tag version does not match the control version.
+func defineForTag(controlVersion string, tag string) (string, error) {
 	tagVersion, err := parseVersion(tag)
 	if err != nil {
 		return "", err
 	}
 
-	if tagVersion != version {
-		return "", fmt.Errorf("version in control file and release tag mismatch control:%s tag:%s", version, tagVersion)
+	if tagVersion != controlVersion {
+		return "", fmt.Errorf("version in control file and release tag mismatch control:%s tag:%s", controlVersion, tagVersion)
 	}
 
 	return tagVersion, nil
 }
 
-// parseVersion parses the version string in the format `0.100-0` and
+// parseVersion parses the version string in the format `0.100-0` or `v0.100-0` and
 // returns a normalized version string in `0.100.0` format.
 func parseVersion(version string) (string, error) {
 	match := documentDBVer.FindStringSubmatch(version)

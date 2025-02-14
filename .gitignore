@@ -43,9 +43,13 @@
 *.idb
 *.pdb
 
+# FerretDB packaging
+!*go.mod
+*.deb
+/bin
+
 # Kernel Module Compile Results
 *.mod*
-!*go.mod
 *.cmd
 .tmp_versions/
 modules.order
@@ -70,6 +74,3 @@ build/
 
 # temp schedules
 *.tmp
-
-# packages
-*.deb

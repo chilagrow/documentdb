@@ -36,15 +36,12 @@ func getEnvFunc(t *testing.T, env map[string]string) func(string) string {
 		return val
 	}
 }
-
-type testCase struct {
-	env            map[string]string
-	defaultVersion string // pg_documentdb/documentdb.control file's default_version field
-	expected       string
-}
-
 func TestDefine(t *testing.T) {
-	for name, tc := range map[string]testCase{
+	for name, tc := range map[string]struct {
+		env            map[string]string
+		defaultVersion string // pg_documentdb/documentdb.control file's default_version field
+		expected       string
+	}{
 		"pull_request": {
 			env: map[string]string{
 				"GITHUB_BASE_REF":   "main",
@@ -54,7 +51,7 @@ func TestDefine(t *testing.T) {
 				"GITHUB_REF_TYPE":   "branch",
 			},
 			defaultVersion: "0.100-0",
-			expected:       "0.100.0~pre.pr~define~docker~tag",
+			expected:       "0.100.0~pr~define~docker~tag",
 		},
 
 		"pull_request/dependabot": {
@@ -66,7 +63,7 @@ func TestDefine(t *testing.T) {
 				"GITHUB_REF_TYPE":   "branch",
 			},
 			defaultVersion: "0.100-0",
-			expected:       "0.100.0~pre.pr~mongo~go~driver~29d768e",
+			expected:       "0.100.0~pr~mongo~go~driver~29d768e",
 		},
 
 		"pull_request_target": {
@@ -78,7 +75,7 @@ func TestDefine(t *testing.T) {
 				"GITHUB_REF_TYPE":   "branch",
 			},
 			defaultVersion: "0.100-0",
-			expected:       "0.100.0~pre.pr~define~docker~tag",
+			expected:       "0.100.0~pr~define~docker~tag",
 		},
 
 		"push/main": {
@@ -90,7 +87,7 @@ func TestDefine(t *testing.T) {
 				"GITHUB_REF_TYPE":   "branch",
 			},
 			defaultVersion: "0.100-0",
-			expected:       "0.100.0~pre.main",
+			expected:       "0.100.0~main",
 		},
 		"push/ferretdb": {
 			env: map[string]string{
@@ -101,7 +98,7 @@ func TestDefine(t *testing.T) {
 				"GITHUB_REF_TYPE":   "branch",
 			},
 			defaultVersion: "0.100-0",
-			expected:       "0.100.0~pre.ferretdb",
+			expected:       "0.100.0~ferretdb",
 		},
 		"push/other": {
 			env: map[string]string{
@@ -156,7 +153,7 @@ func TestDefine(t *testing.T) {
 				"GITHUB_REPOSITORY": "FerretDB/FerretDB",
 			},
 			defaultVersion: "0.100-0",
-			expected:       "0.100.0~pre.main",
+			expected:       "0.100.0~main",
 		},
 
 		"workflow_run": {
@@ -169,7 +166,7 @@ func TestDefine(t *testing.T) {
 				"GITHUB_REPOSITORY": "FerretDB/FerretDB",
 			},
 			defaultVersion: "0.100-0",
-			expected:       "0.100.0~pre.main",
+			expected:       "0.100.0~main",
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -203,11 +200,11 @@ func TestResults(t *testing.T) {
 	})
 	action := githubactions.New(githubactions.WithGetenv(getenv), githubactions.WithWriter(&stdout))
 
-	version := "0.100.0~pre.main"
+	version := "0.100.0~main"
 
 	setResults(action, version)
 
-	expected := "version: 0.100.0~pre.main\n"
+	expected := "version: 0.100.0~main\n"
 	assert.Equal(t, expected, stdout.String(), "stdout does not match")
 
 	b, err := io.ReadAll(summaryF)
@@ -216,7 +213,7 @@ func TestResults(t *testing.T) {
 
 	expectedOutput := `
 version<<_GitHubActionsFileCommandDelimeter_
-0.100.0~pre.main
+0.100.0~main
 _GitHubActionsFileCommandDelimeter_
 `[1:]
 	b, err = io.ReadAll(outputF)
