@@ -56,7 +56,7 @@ var controlDefaultVer = regexp.MustCompile(`default_version\s*=\s*'([0-9]+\.[0-9
 // For a release tag it has a leading `v` such as `v0.100-0`.
 //
 //nolint:lll // for readibility
-var documentDBVer = regexp.MustCompile(`^v?(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)-(?P<patch>0|[1-9]\d*)(?:-(?P<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+(?P<buildmetadata>[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$`)
+var documentDBVer = regexp.MustCompile(`^v?(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)-(?P<patch>0|[1-9]\d*)$`)
 
 // debianVer is allowed characters for debian package version,
 // https://www.debian.org/doc/debian-policy/ch-controlfields.html#version.
@@ -144,6 +144,7 @@ func define(controlDefaultVersion string, getenv githubactions.GetenvFunc) (stri
 }
 
 // defineForPR defines package version for pull requests.
+// It replaces branch name characters not allowed in debian package version with `_`.
 func defineForPR(version, branch string) string {
 	// for branches like "dependabot/submodules/XXX"
 	parts := strings.Split(branch, "/")
@@ -188,13 +189,8 @@ func parseVersion(version string) (string, error) {
 	major := match[documentDBVer.SubexpIndex("major")]
 	minor := match[documentDBVer.SubexpIndex("minor")]
 	patch := match[documentDBVer.SubexpIndex("patch")]
-	prerelease := match[documentDBVer.SubexpIndex("prerelease")]
 
-	if prerelease == "" {
-		return major + "." + minor + "." + patch, nil
-	}
-
-	return major + "." + minor + "." + patch + "~" + prerelease, nil
+	return major + "." + minor + "." + patch, nil
 }
 
 // setResults sets action output parameters, summary, etc.

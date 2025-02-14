@@ -113,30 +113,6 @@ func TestDefine(t *testing.T) {
 			},
 		},
 
-		"push/tag/prerelease1": {
-			env: map[string]string{
-				"GITHUB_BASE_REF":   "",
-				"GITHUB_EVENT_NAME": "push",
-				"GITHUB_HEAD_REF":   "",
-				"GITHUB_REF_NAME":   "v0.100-0-beta",
-				"GITHUB_REF_TYPE":   "tag",
-			},
-			defaultVersion: "0.100-0-beta",
-			expected:       "0.100.0~beta",
-		},
-
-		"push/tag/prerelease2": {
-			env: map[string]string{
-				"GITHUB_BASE_REF":   "",
-				"GITHUB_EVENT_NAME": "push",
-				"GITHUB_HEAD_REF":   "",
-				"GITHUB_REF_NAME":   "v0.100-0-rc.1",
-				"GITHUB_REF_TYPE":   "tag",
-			},
-			defaultVersion: "0.100-0-rc.1",
-			expected:       "0.100.0~rc.1",
-		},
-
 		"push/tag/release1": {
 			env: map[string]string{
 				"GITHUB_BASE_REF":   "",
