@@ -16,6 +16,14 @@ on:
   schedule:
     - cron: "10 8 * * 1"
 
+env:
+  GOPATH: /home/runner/go
+  GOCACHE: /home/runner/go/cache
+  GOLANGCI_LINT_CACHE: /home/runner/go/cache/lint
+  GOMODCACHE: /home/runner/go/mod
+  GOPROXY: https://proxy.golang.org
+  GOTOOLCHAIN: local
+
 # Do not run this workflow in parallel for any PR change or branch/tag push
 # to save some resources.
 concurrency:
