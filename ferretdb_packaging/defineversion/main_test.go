@@ -54,7 +54,7 @@ func TestDefine(t *testing.T) {
 				"GITHUB_REF_TYPE":   "branch",
 			},
 			defaultVersion: "0.100-0",
-			expected:       "0.100.0~pre.pr-define-docker-tag",
+			expected:       "0.100.0~pre.pr_define_docker_tag",
 		},
 
 		"pull_request/dependabot": {
@@ -66,7 +66,7 @@ func TestDefine(t *testing.T) {
 				"GITHUB_REF_TYPE":   "branch",
 			},
 			defaultVersion: "0.100-0",
-			expected:       "0.100.0~pre.pr-mongo-go-driver-29d768e",
+			expected:       "0.100.0~pre.pr_mongo_go_driver_29d768e",
 		},
 
 		"pull_request_target": {
@@ -78,7 +78,7 @@ func TestDefine(t *testing.T) {
 				"GITHUB_REF_TYPE":   "branch",
 			},
 			defaultVersion: "0.100-0",
-			expected:       "0.100.0~pre.pr-define-docker-tag",
+			expected:       "0.100.0~pre.pr_define_docker_tag",
 		},
 
 		"push/main": {

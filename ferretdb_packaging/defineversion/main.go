@@ -47,27 +47,9 @@ func main() {
 	setResults(action, res)
 }
 
-// controlDefaultVer is a regular expression to match the default_version field in .control file,
+// controlDefaultVer is matches the default_version field in control file,
 // see pg_documentdb_core/documentdb_core.control.
 var controlDefaultVer = regexp.MustCompile(`default_version\s*=\s*'([0-9]+\.[0-9]+-[0-9]+)'`)
-
-// controlVersion returns the default_version field from the control file,
-// see pg_documentdb_core/documentdb_core.control.
-func controlVersion(f string) (string, error) {
-	b, err := os.ReadFile(f)
-	if err != nil {
-		return "", err
-	}
-
-	match := controlDefaultVer.FindSubmatch(b)
-	if len(match) != 2 {
-		return "", fmt.Errorf("control file did not find default_version match file: %s", f)
-	}
-
-	version := string(match[1])
-
-	return version, nil
-}
 
 // documentDBVer is the version syntax used by documentdb.
 // For documentdb.control file, the version is in the format of `0.100-0`.
@@ -75,6 +57,10 @@ func controlVersion(f string) (string, error) {
 //
 //nolint:lll // for readibility
 var documentDBVer = regexp.MustCompile(`^v?(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)-(?P<patch>0|[1-9]\d*)(?:-(?P<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+(?P<buildmetadata>[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$`)
+
+// debianVer is allowed characters for debian package version,
+// https://www.debian.org/doc/debian-policy/ch-controlfields.html#version.
+var debianVer = regexp.MustCompile(`[^A-Za-z0-9~.+]`)
 
 // debugEnv logs all environment variables that start with `GITHUB_` or `INPUT_`
 // in debug level.
@@ -94,6 +80,24 @@ func debugEnv(action *githubactions.Action) {
 	for _, l := range res {
 		action.Debugf("\t%s", l)
 	}
+}
+
+// controlVersion returns the default_version field from the control file,
+// see pg_documentdb_core/documentdb_core.control.
+func controlVersion(f string) (string, error) {
+	b, err := os.ReadFile(f)
+	if err != nil {
+		return "", err
+	}
+
+	match := controlDefaultVer.FindSubmatch(b)
+	if len(match) != 2 {
+		return "", fmt.Errorf("control file did not find default_version match file: %s", f)
+	}
+
+	version := string(match[1])
+
+	return version, nil
 }
 
 // Define extracts Docker image names and tags from the environment variables defined by GitHub Actions.
@@ -144,8 +148,9 @@ func defineForPR(version, branch string) string {
 	// for branches like "dependabot/submodules/XXX"
 	parts := strings.Split(branch, "/")
 	branch = parts[len(parts)-1]
+	branch = debianVer.ReplaceAllString(branch, "_")
 
-	return fmt.Sprintf("%s~pre.pr-%s", version, branch)
+	return fmt.Sprintf("%s~pre.pr_%s", version, branch)
 }
 
 // defineForBranch defines package version for branch builds.
