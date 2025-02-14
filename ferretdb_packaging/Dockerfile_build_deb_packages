@@ -3,9 +3,7 @@ FROM --platform=linux/amd64 ${BASE_IMAGE}
 ARG DEBIAN_FRONTEND=noninteractive
 
 ARG POSTGRES_VERSION=16
-ARG RELEASE_TAG=''
-ARG PRE_RELEASE_BRANCH=''
-ARG PRE_RELEASE_HASH=''
+ARG DOCUMENTDB_VERSION=''
 
 RUN apt-get update
 
@@ -68,18 +66,12 @@ WORKDIR /build
 # Copy the source code into the container
 COPY . /build
 
-RUN grep -E "^default_version" pg_documentdb_core/documentdb_core.control | sed -E "s/.*'([0-9]+\.[0-9]+-[0-9]+)'.*/\1/" > DOCUMENTDB_VERSION
-
-# Convert the version to the format expected by the debian packaging
-RUN sed -i "s/-/\./g" DOCUMENTDB_VERSION
-
-# Set pre-release version if $PRE_RELEASE_HASH is set
-RUN sed -i "s/$/${PRE_RELEASE_HASH:+~pre.$PRE_RELEASE_BRANCH.$PRE_RELEASE_HASH}/" DOCUMENTDB_VERSION
+RUN test -n "$DOCUMENTDB_VERSION" || (echo "DOCUMENTDB_VERSION not set" && false)
 
 # Setup the debian packaging
 COPY ferretdb_packaging/debian_files /build/debian
 RUN sed -i "s/POSTGRES_VERSION/${POSTGRES_VERSION}/g" /build/debian/control
-RUN sed -i "s/DOCUMENTDB_VERSION/$(cat DOCUMENTDB_VERSION)/g" /build/debian/changelog
+RUN sed -i "s/DOCUMENTDB_VERSION/${DOCUMENTDB_VERSION}/g" /build/debian/changelog
 
 COPY ferretdb_packaging/packaging-entrypoint.sh /usr/local/bin/packaging-entrypoint.sh
 

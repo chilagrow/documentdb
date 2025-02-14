@@ -1,4 +1,4 @@
-module github.com/chilagrow/documentdb/ferretdb_packaging
+module github.com/FerretDB/documentdb/ferretdb_packaging
 
 go 1.23
 

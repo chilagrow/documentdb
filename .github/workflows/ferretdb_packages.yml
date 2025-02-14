@@ -49,13 +49,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Build pre-release
-        if: github.event_name != 'create' || GITHUB_REF_TYPE != 'tag'
-        run: ./ferretdb_packaging/build_packages.sh --os ${{ matrix.os }} --pg ${{ matrix.pg }} --branch ${{ github.ref_name }} --commit ${{ github.sha }} --test-clean-install
+      - name: Setup Go
+        uses: FerretDB/github-actions/setup-go@main
 
-      - name: Build release
-        if: github.event_name == 'create' && GITHUB_REF_TYPE == 'tag'
-        run: ./ferretdb_packaging/build_packages.sh --os ${{ matrix.os }} --pg ${{ matrix.pg }} --tag ${{ github.ref_name }} --test-clean-install
+      - name: Define package tag version
+        run: |
+          cd ferretdb_packaging
+          go mod tidy
+          go mod verify
+          go build -v -o=bin/ ./defineversion
+          bin/defineversion --control-file ../pg_documentdb_core/documentdb_core.control
+
+      - name: Build ${{ steps.tag.outputs.version }}
+        if: steps.tag.outputs.version != ''
+        run: ./ferretdb_packaging/build_packages.sh --os ${{ matrix.os }} --pg ${{ matrix.pg }} --version ${{ steps.tag.outputs.version }} --test-clean-install
 
       - name: Upload
         uses: actions/upload-artifact@v4

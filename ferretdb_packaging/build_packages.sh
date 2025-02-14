@@ -14,9 +14,7 @@ function show_help {
     echo "  --pg                 PG version to build packages for. Possible values: [15, 16]"
     echo ""
     echo "Optional Arguments:"
-    echo "  --tag                The tag to use for the release build. Not needed for a pre-release build."
-    echo "  --branch             The git branch used for the pre-release build. Not needed for a release build."
-    echo "  --commit             The hash of git commit used for the pre-release build. Not needed for a release build."
+    echo "  --version            The debian conformed documentdb version to build. Examples: [0.100.0, 0.100.0~pre.main]"
     echo "  --test-clean-install Test installing the packages in a clean Docker container."
     echo "  --output-dir         Relative path from the repo root of the directory where to drop the packages. The directory will be created if it doesn't exist. Default: packaging"
     echo "  -h, --help           Display this help message."
@@ -26,9 +24,7 @@ function show_help {
 # Initialize variables
 OS=""
 PG=""
-TAG=""
-BRANCH=""
-HASH=""
+DOCUMENTDB_VERSION=""
 TEST_CLEAN_INSTALL=false
 OUTPUT_DIR="packaging"  # Default value for output directory
 
@@ -57,17 +53,9 @@ while [[ $# -gt 0 ]]; do
                     ;;
             esac
             ;;
-        --tag)
+        --version)
             shift
-            TAG=$1
-            ;;
-        --branch)
-            shift
-            BRANCH=$1
-            ;;
-        --commit)
-            shift
-            HASH=$(git rev-parse --short=10 $1)
+            DOCUMENTDB_VERSION=$1
             ;;
         --test-clean-install)
             TEST_CLEAN_INSTALL=true
@@ -101,6 +89,13 @@ if [[ -z "$PG" ]]; then
     exit 1
 fi
 
+if [[ -z "$DOCUMENTDB_VERSION" ]]; then
+    echo "Error: --version is required."
+    show_help
+    exit 1
+fi
+
+
 # Set the appropriate Docker image based on the OS
 case $OS in
     deb11)
@@ -124,7 +119,7 @@ repo_root=$(git rev-parse --show-toplevel)
 abs_output_dir="$repo_root/$OUTPUT_DIR"
 cd $repo_root
 
-echo "Building packages for OS: $OS and PostgreSQL version: $PG"
+echo "Building packages for OS: $OS, PostgreSQL version: $PG, DOCUMENTDB version: $DOCUMENTDB_VERSION"
 echo "Output directory: $abs_output_dir"
 
 # Create the output directory if it doesn't exist
@@ -132,8 +127,7 @@ mkdir -p $abs_output_dir
 
 # Build the Docker image while showing the output to the console
 docker build --platform linux/amd64 -t documentdb-build-packages:latest -f ferretdb_packaging/Dockerfile_build_deb_packages \
-    --build-arg BASE_IMAGE=$DOCKER_IMAGE --build-arg POSTGRES_VERSION=$PG --build-arg RELEASE_TAG=$TAG \
-    --build-arg PRE_RELEASE_BRANCH=$BRANCH --build-arg PRE_RELEASE_HASH=$HASH .
+    --build-arg BASE_IMAGE=$DOCKER_IMAGE --build-arg POSTGRES_VERSION=$PG --build-arg DOCUMENTDB_VERSION=$DOCUMENTDB_VERSION .
 
 # Run the Docker container to build the packages
 docker run --platform linux/amd64 --rm -v $abs_output_dir:/output documentdb-build-packages:latest

@@ -149,6 +149,17 @@ func TestDefine(t *testing.T) {
 			expected:       "0.100.0",
 		},
 
+		"push/tag/mismatch": {
+			env: map[string]string{
+				"GITHUB_BASE_REF":   "",
+				"GITHUB_EVENT_NAME": "push",
+				"GITHUB_HEAD_REF":   "",
+				"GITHUB_REF_NAME":   "v0.100-1", // default version and tag mismatch
+				"GITHUB_REF_TYPE":   "tag",
+			},
+			defaultVersion: "0.100-0",
+		},
+
 		"push/tag/wrong": {
 			env: map[string]string{
 				"GITHUB_BASE_REF":   "",
@@ -235,4 +246,25 @@ _GitHubActionsFileCommandDelimeter_
 	b, err = io.ReadAll(outputF)
 	require.NoError(t, err)
 	assert.Equal(t, expectedOutput, string(b), "output parameters does not match")
+}
+
+func TestControlVersion(t *testing.T) {
+	dir := t.TempDir()
+
+	controlF, err := os.CreateTemp(dir, "test.control")
+	defer controlF.Close() //nolint:errcheck // temporary file for testing
+
+	buf := `comment = 'API surface for DocumentDB for PostgreSQL'
+default_version = '0.100-0'
+module_pathname = '$libdir/pg_documentdb'
+relocatable = false
+superuser = true
+requires = 'documentdb_core, pg_cron, tsm_system_rows, vector, postgis, rum'`
+	_, err = io.WriteString(controlF, buf)
+	require.NoError(t, err)
+
+	version, err := controlVersion(controlF.Name())
+	require.NoError(t, err)
+
+	require.Equal(t, "0.100-0", version)
 }

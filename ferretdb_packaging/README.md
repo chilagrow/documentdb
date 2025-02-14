@@ -2,7 +2,7 @@
 Run `./ferretdb_packaging/build_packages.sh -h` and follow the instructions.
 E.g. to build for Debian 12 and PostgreSQL 16, run:
 ```
-./ferretdb_packaging/build_packages.sh --os deb12 --pg 16
+./ferretdb_packaging/build_packages.sh --os deb12 --pg 16 --version 0.100.0
 ```
 
 Packages can be found at the `packages` directory by default, but that can be configured with the `--output-dir` option.

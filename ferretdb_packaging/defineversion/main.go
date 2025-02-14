@@ -26,13 +26,13 @@ import (
 )
 
 func main() {
-	versionF := flag.String("version", "", "pg_documentdb/documentdb.control file's default_version field")
+	versionF := flag.String("control-file", "../pg_documentdb/documentdb.control", "pg_documentdb/documentdb.control file path")
 	flag.Parse()
 
 	action := githubactions.New()
 
 	if *versionF == "" {
-		action.Fatalf("%s", "-version flag is empty.")
+		action.Fatalf("%s", "-control-file flag is empty.")
 	}
 
 	debugEnv(action)
@@ -43,6 +43,28 @@ func main() {
 	}
 
 	setResults(action, res)
+}
+
+// controlDefaultVer is a regular expression to match the default_version field in .control file,
+// see pg_documentdb_core/documentdb_core.control.
+var controlDefaultVer = regexp.MustCompile(`default_version\s*=\s*'([0-9]+\.[0-9]+-[0-9]+)'`)
+
+// controlVersion returns the default_version field from the control file,
+// see pg_documentdb_core/documentdb_core.control.
+func controlVersion(f string) (string, error) {
+	b, err := os.ReadFile(f)
+	if err != nil {
+		return "", err
+	}
+
+	match := controlDefaultVer.FindSubmatch(b)
+	if len(match) != 2 {
+		return "", fmt.Errorf("control file did not find default_version match file: %s", f)
+	}
+
+	version := string(match[1])
+
+	return version, nil
 }
 
 // documentDBVer is the version syntax used by documentdb.
