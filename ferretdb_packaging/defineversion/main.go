@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package main defines debian version number for CI.
+// Package main defines debian version number of DocumentDB for CI builds.
 package main
 
 import (
@@ -48,19 +48,19 @@ func main() {
 	setResults(action, res)
 }
 
-// controlDefaultVer is matches the default_version field in control file,
+// controlDefaultVer matches the default_version field in control file,
 // see pg_documentdb_core/documentdb_core.control.
 var controlDefaultVer = regexp.MustCompile(`default_version\s*=\s*'([0-9]+\.[0-9]+-[0-9]+)'`)
 
 // documentDBVer is the version syntax used by documentdb.
 // For documentdb.control file, the version is in the format of `0.100-0`.
-// For a release tag it has a leading `v` such as `v0.100-0`.
+// For release tags, it has a leading `v` such as `v0.100-0`.
 //
 //nolint:lll // for readibility
 var documentDBVer = regexp.MustCompile(`^v?(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)-(?P<patch>0|[1-9]\d*)$`)
 
-// debianVer is allowed characters for debian package version,
-// https://www.debian.org/doc/debian-policy/ch-controlfields.html#version.
+// debianVer matches allowed characters for debian package version,
+// see https://www.debian.org/doc/debian-policy/ch-controlfields.html#version.
 var debianVer = regexp.MustCompile(`[^A-Za-z0-9~.+]`)
 
 // debugEnv logs all environment variables that start with `GITHUB_` or `INPUT_`
@@ -101,8 +101,8 @@ func controlVersion(f string) (string, error) {
 	return version, nil
 }
 
-// Define extracts debian version number from the environment variables defined by GitHub Actions.
-// If the release tag was set, it checks the tag matches with the control version
+// define extracts debian version number from the environment variables of GitHub Actions.
+// If the release tag is set, it checks the tag matches the control version
 // and returns an error on mismatch.
 func define(controlDefaultVersion string, getenv githubactions.GetenvFunc) (string, error) {
 	version, err := parseVersion(controlDefaultVersion)
@@ -146,7 +146,7 @@ func define(controlDefaultVersion string, getenv githubactions.GetenvFunc) (stri
 	return res, nil
 }
 
-// defineForPR defines package version for pull requests.
+// defineForPR defines debian version number for pull requests.
 // It replaces branch name with allowed chars of debian package version.
 func defineForPR(version, branch string) string {
 	// for branches like "dependabot/submodules/XXX"
@@ -157,7 +157,7 @@ func defineForPR(version, branch string) string {
 	return fmt.Sprintf("%s~pr~%s", version, branch)
 }
 
-// defineForBranch defines package version for branch builds.
+// defineForBranch defines debian version number for branch builds.
 func defineForBranch(version, branch string) (string, error) {
 	switch branch {
 	case "main", "ferretdb":
@@ -167,7 +167,7 @@ func defineForBranch(version, branch string) (string, error) {
 	}
 }
 
-// defineForTag defines package version for release build.
+// defineForTag defines debian version number for release build.
 // It returns an error if tag version does not match the control version.
 func defineForTag(controlVersion string, tag string) (string, error) {
 	tagVersion, err := parseVersion(tag)

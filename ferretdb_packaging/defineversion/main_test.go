@@ -44,7 +44,6 @@ func TestDefine(t *testing.T) {
 	}{
 		"pull_request": {
 			env: map[string]string{
-				"GITHUB_BASE_REF":   "main",
 				"GITHUB_EVENT_NAME": "pull_request",
 				"GITHUB_HEAD_REF":   "define-docker-tag",
 				"GITHUB_REF_NAME":   "1/merge",
@@ -56,7 +55,6 @@ func TestDefine(t *testing.T) {
 
 		"pull_request/dependabot": {
 			env: map[string]string{
-				"GITHUB_BASE_REF":   "main",
 				"GITHUB_EVENT_NAME": "pull_request",
 				"GITHUB_HEAD_REF":   "dependabot/submodules/tests/mongo-go-driver-29d768e",
 				"GITHUB_REF_NAME":   "58/merge",
@@ -68,7 +66,6 @@ func TestDefine(t *testing.T) {
 
 		"pull_request_target": {
 			env: map[string]string{
-				"GITHUB_BASE_REF":   "main",
 				"GITHUB_EVENT_NAME": "pull_request_target",
 				"GITHUB_HEAD_REF":   "define-docker-tag",
 				"GITHUB_REF_NAME":   "main",
@@ -80,7 +77,6 @@ func TestDefine(t *testing.T) {
 
 		"push/main": {
 			env: map[string]string{
-				"GITHUB_BASE_REF":   "",
 				"GITHUB_EVENT_NAME": "push",
 				"GITHUB_HEAD_REF":   "",
 				"GITHUB_REF_NAME":   "main",
@@ -91,7 +87,6 @@ func TestDefine(t *testing.T) {
 		},
 		"push/ferretdb": {
 			env: map[string]string{
-				"GITHUB_BASE_REF":   "",
 				"GITHUB_EVENT_NAME": "push",
 				"GITHUB_HEAD_REF":   "",
 				"GITHUB_REF_NAME":   "ferretdb",
@@ -102,7 +97,6 @@ func TestDefine(t *testing.T) {
 		},
 		"push/other": {
 			env: map[string]string{
-				"GITHUB_BASE_REF":   "",
 				"GITHUB_EVENT_NAME": "push",
 				"GITHUB_HEAD_REF":   "",
 				"GITHUB_REF_NAME":   "releases",
@@ -112,7 +106,6 @@ func TestDefine(t *testing.T) {
 
 		"push/tag/release1": {
 			env: map[string]string{
-				"GITHUB_BASE_REF":   "",
 				"GITHUB_EVENT_NAME": "push",
 				"GITHUB_HEAD_REF":   "",
 				"GITHUB_REF_NAME":   "v0.100-0",
@@ -124,7 +117,6 @@ func TestDefine(t *testing.T) {
 
 		"push/tag/mismatch": {
 			env: map[string]string{
-				"GITHUB_BASE_REF":   "",
 				"GITHUB_EVENT_NAME": "push",
 				"GITHUB_HEAD_REF":   "",
 				"GITHUB_REF_NAME":   "v0.100-1", // default version and tag mismatch
@@ -135,7 +127,6 @@ func TestDefine(t *testing.T) {
 
 		"push/tag/wrong": {
 			env: map[string]string{
-				"GITHUB_BASE_REF":   "",
 				"GITHUB_EVENT_NAME": "push",
 				"GITHUB_HEAD_REF":   "",
 				"GITHUB_REF_NAME":   "0.100-0", // no leading v
@@ -145,12 +136,10 @@ func TestDefine(t *testing.T) {
 
 		"schedule": {
 			env: map[string]string{
-				"GITHUB_BASE_REF":   "",
 				"GITHUB_EVENT_NAME": "schedule",
 				"GITHUB_HEAD_REF":   "",
 				"GITHUB_REF_NAME":   "main",
 				"GITHUB_REF_TYPE":   "branch",
-				"GITHUB_REPOSITORY": "FerretDB/FerretDB",
 			},
 			defaultVersion: "0.100-0",
 			expected:       "0.100.0~main",
@@ -158,12 +147,10 @@ func TestDefine(t *testing.T) {
 
 		"workflow_run": {
 			env: map[string]string{
-				"GITHUB_BASE_REF":   "",
 				"GITHUB_EVENT_NAME": "workflow_run",
 				"GITHUB_HEAD_REF":   "",
 				"GITHUB_REF_NAME":   "main",
 				"GITHUB_REF_TYPE":   "branch",
-				"GITHUB_REPOSITORY": "FerretDB/FerretDB",
 			},
 			defaultVersion: "0.100-0",
 			expected:       "0.100.0~main",
