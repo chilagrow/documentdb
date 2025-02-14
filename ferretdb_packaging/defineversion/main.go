@@ -26,18 +26,20 @@ import (
 )
 
 func main() {
-	versionF := flag.String("control-file", "../pg_documentdb/documentdb.control", "pg_documentdb/documentdb.control file path")
+	controlFileF := flag.String("control-file", "../pg_documentdb/documentdb.control", "pg_documentdb/documentdb.control file path")
 	flag.Parse()
 
 	action := githubactions.New()
 
-	if *versionF == "" {
+	if *controlFileF == "" {
 		action.Fatalf("%s", "-control-file flag is empty.")
 	}
 
+	version, err := controlVersion(*controlFileF)
+
 	debugEnv(action)
 
-	res, err := define(*versionF, action.Getenv)
+	res, err := define(version, action.Getenv)
 	if err != nil {
 		action.Fatalf("%s", err)
 	}
