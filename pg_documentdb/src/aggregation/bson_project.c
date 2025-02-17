@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/bson/bson_project.c
+ * src/aggregation/bson_project.c
  *
  * Implementation of BSON projection functions.
  *
@@ -176,6 +176,10 @@ static void EvaluateRedactArray(const bson_value_t *array, const
 static void SetVariableSpec(ExpressionVariableContext **state, pgbson *variableSpec);
 static inline bool IsBsonDollarProjectFunctionOid(Oid functionOid);
 static inline bool IsBsonDollarAddFieldsFunctionOid(Oid functionOid);
+static pgbson * MergeDocumentWithArrayOverride(pgbson *sourceDocument,
+											   const BsonIntermediatePathNode *
+											   pathSpecTree,
+											   bool overrideNestedArrays);
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -277,6 +281,11 @@ bson_dollar_lookup_expression_eval_merge(PG_FUNCTION_ARGS)
 	 * the current lookup spec has variable references to the parent lookup spec. */
 	context.skipParseAggregationExpressions = false;
 
+	/* Add the time system variables to the context. */
+	GetTimeSystemVariablesFromVariableSpec(variableSpec,
+										   &context.parseAggregationContext.
+										   timeSystemVariables);
+
 	bool hasFields;
 	bson_iter_t specIter;
 	PgbsonInitIterator(pathSpec, &specIter);
@@ -306,8 +315,12 @@ bson_dollar_lookup_expression_eval_merge(PG_FUNCTION_ARGS)
 	 * honor the value when we evaluate their values and not treat them as expressions against the right doc.
 	 */
 	PgbsonInitIterator(pathSpec, &specIter);
-	pgbson_writer variableWriter;
-	PgbsonWriterInit(&variableWriter);
+	pgbson_writer variablesWriter;
+	PgbsonWriterInit(&variablesWriter);
+
+	pgbson_writer childWriter;
+	PgbsonWriterStartDocument(&variablesWriter, "let", -1, &childWriter);
+
 	const char *removeVar = "$$REMOVE";
 	const char *literalKey = "$literal";
 	while (bson_iter_next(&specIter))
@@ -317,19 +330,20 @@ bson_dollar_lookup_expression_eval_merge(PG_FUNCTION_ARGS)
 		if (!PgbsonInitIteratorAtPath(evaluatedInputSpec, varKey, &innerIter))
 		{
 			/* variable not found - need to add the original key with $$REMOVE so that it doesn't project */
-			PgbsonWriterAppendUtf8(&variableWriter, varKey, -1, removeVar);
+			PgbsonWriterAppendUtf8(&childWriter, varKey, -1, removeVar);
 		}
 		else
 		{
 			pgbson_writer literalWriter;
-			PgbsonWriterStartDocument(&variableWriter, varKey, -1, &literalWriter);
+			PgbsonWriterStartDocument(&childWriter, varKey, -1, &literalWriter);
 			PgbsonWriterAppendValue(&literalWriter, literalKey, -1, bson_iter_value(
 										&innerIter));
-			PgbsonWriterEndDocument(&variableWriter, &literalWriter);
+			PgbsonWriterEndDocument(&childWriter, &literalWriter);
 		}
 	}
 
-	evaluatedInputSpec = PgbsonWriterGetPgbson(&variableWriter);
+	PgbsonWriterEndDocument(&variablesWriter, &childWriter);
+	evaluatedInputSpec = PgbsonWriterGetPgbson(&variablesWriter);
 
 	pgbson *resultVariables = NULL;
 	if (!IsPgbsonEmptyDocument(variableSpec))
@@ -567,6 +581,12 @@ bson_dollar_merge_documents(PG_FUNCTION_ARGS)
 	pgbson *document = PG_GETARG_PGBSON(0);
 	pgbson *pathSpec = PG_GETARG_PGBSON(1);
 
+	bool overrideNestedArrays = false;
+	if (PG_NARGS() > 2)
+	{
+		overrideNestedArrays = PG_GETARG_BOOL(2);
+	}
+
 	/* bson_dollar_add_fields with empty projection spec is a no-op */
 	if (IsPgbsonEmptyDocument(pathSpec))
 	{
@@ -596,11 +616,13 @@ bson_dollar_merge_documents(PG_FUNCTION_ARGS)
 		BuildBsonPathTreeForDollarAddFields(&projectionState, &pathSpecIter,
 											skipParseAggregationExpressions,
 											variableSpec);
-		PG_RETURN_POINTER(ProjectDocumentWithState(document, &projectionState));
+		PG_RETURN_POINTER(MergeDocumentWithArrayOverride(document, projectionState.root,
+														 overrideNestedArrays));
 	}
 	else
 	{
-		PG_RETURN_POINTER(ProjectDocumentWithState(document, state));
+		PG_RETURN_POINTER(MergeDocumentWithArrayOverride(document, state->root,
+														 overrideNestedArrays));
 	}
 }
 
@@ -648,24 +670,9 @@ bson_dollar_merge_documents_at_path(PG_FUNCTION_ARGS)
 		&nodeCreated,
 		&parseContext);
 
-	pgbson_writer writer;
-	bson_iter_t documentIterator;
-	PgbsonWriterInit(&writer);
-
-	PgbsonInitIterator(leftDocument, &documentIterator);
-	bool projectNonMatchingField = true;
-	ProjectDocumentState projectDocState = {
-		.isPositionalAlreadyEvaluated = false,
-		.parentDocument = leftDocument,
-		.pendingProjectionState = NULL,
-		.skipIntermediateArrayFields = true,
-	};
-
-	bool isInNestedArray = false;
-	TraverseObjectAndAppendToWriter(&documentIterator, root, &writer,
-									projectNonMatchingField,
-									&projectDocState, isInNestedArray);
-	PG_RETURN_POINTER(PgbsonWriterGetPgbson(&writer));
+	bool overrideNestedArrays = true;
+	PG_RETURN_POINTER(MergeDocumentWithArrayOverride(leftDocument, root,
+													 overrideNestedArrays));
 }
 
 
@@ -1021,7 +1028,7 @@ bson_dollar_facet_project(PG_FUNCTION_ARGS)
 
 /*
  * bson_dollar_unset performs a projection of one or more paths to unset
- * in a binary serialized bson. THis is equivalent to the $project but with
+ * in a binary serialized bson. This is equivalent to the $project but with
  * exclude being true.
  */
 Datum
@@ -1148,8 +1155,10 @@ static void
 BuildRedactState(BsonReplaceRootRedactState *redactState, const bson_value_t *redactValue,
 				 pgbson *variableSpec)
 {
-	ParseAggregationExpressionContext context = { allowRedactVariables: true };
+	ParseAggregationExpressionContext context = { .allowRedactVariables = true };
 	redactState->expressionData = palloc0(sizeof(AggregationExpressionData));
+
+	GetTimeSystemVariablesFromVariableSpec(variableSpec, &context.timeSystemVariables);
 	ParseAggregationExpressionData(redactState->expressionData, redactValue, &context);
 
 	SetVariableSpec(&redactState->variableContext, variableSpec);
@@ -1211,7 +1220,7 @@ EvaluateRedactDocument(pgbson *document, const BsonReplaceRootRedactState *state
 	PgbsonToSinglePgbsonElement(evaluatedResult, &evaluatedResultElement);
 
 	AggregationExpressionData *parsedValue = palloc0(sizeof(AggregationExpressionData));
-	ParseAggregationExpressionContext context = { allowRedactVariables: true };
+	ParseAggregationExpressionContext context = { .allowRedactVariables = true };
 	ParseAggregationExpressionData(parsedValue, &evaluatedResultElement.bsonValue,
 								   &context);
 	if (parsedValue->kind == AggregationExpressionKind_SystemVariable)
@@ -1580,6 +1589,11 @@ BuildBsonPathTreeForDollarProjectCore(BsonProjectionQueryState *state,
 									  BsonProjectionContext *projectionContext,
 									  BuildBsonPathTreeContext *pathTreeContext)
 {
+	/* Set the time system variables in the path tree context. */
+	GetTimeSystemVariablesFromVariableSpec(projectionContext->variableSpec,
+										   &pathTreeContext->parseAggregationContext.
+										   timeSystemVariables);
+
 	bool hasFields = false;
 	bool forceLeafExpression = false;
 	BsonIntermediatePathNode *root = BuildBsonPathTree(projectionContext->pathSpecIter,
@@ -1616,6 +1630,11 @@ BuildBsonPathTreeForDollarAddFields(BsonProjectionQueryState *state,
 	context.buildPathTreeFuncs = &DefaultPathTreeFuncs;
 	context.skipParseAggregationExpressions = skipParseAggregationExpressions;
 
+	/* Set the time system variables in the path tree context from the variableSpec. */
+	GetTimeSystemVariablesFromVariableSpec(variableSpec,
+										   &context.parseAggregationContext.
+										   timeSystemVariables);
+
 	bool hasFields = false;
 	bool forceLeafExpression = true;
 	BsonIntermediatePathNode *root = BuildBsonPathTree(projectionSpecIter, &context,
@@ -1637,14 +1656,21 @@ static void
 SetVariableSpec(ExpressionVariableContext **state, pgbson *variableSpec)
 {
 	*state = NULL;
-	if (variableSpec != NULL)
+
+	bson_iter_t letVarsIter;
+	if (variableSpec != NULL && PgbsonInitIteratorAtPath(variableSpec, "let",
+														 &letVarsIter))
 	{
-		bson_value_t varsValue = ConvertPgbsonToBsonValue(variableSpec);
+		/* Do not need to set the timeSystemVariables field in the context */
+		/* as variables {"a" : "$$NOW"} would be parsed with "$$NOW" evaluated. */
+		ParseAggregationExpressionContext parseContext = { 0 };
+
 		ExpressionVariableContext *variableContext =
 			palloc0(sizeof(ExpressionVariableContext));
 
-		ParseAggregationExpressionContext parseContext = { 0 };
-		ParseVariableSpec(&varsValue, variableContext, &parseContext);
+		const bson_value_t *letVariables = bson_iter_value(&letVarsIter);
+		ParseVariableSpec(letVariables, variableContext, &parseContext);
+
 		*state = variableContext;
 	}
 }
@@ -2534,6 +2560,11 @@ PopulateReplaceRootExpressionDataFromSpec(BsonReplaceRootRedactState *expression
 
 	expressionData->expressionData = palloc0(sizeof(AggregationExpressionData));
 	ParseAggregationExpressionContext parseContext = { 0 };
+
+	/* Add the $$NOW time system variables field from the variableSpec. */
+	GetTimeSystemVariablesFromVariableSpec(variableSpec,
+										   &parseContext.timeSystemVariables);
+
 	ParseAggregationExpressionData(expressionData->expressionData, &bsonValue,
 								   &parseContext);
 
@@ -2645,22 +2676,39 @@ ProjectGeonearDocument(const GeonearDistanceState *state, pgbson *document)
 		&nodeCreated,
 		&parseContext);
 
+	bool overrideNestedArrays = true;
+	return MergeDocumentWithArrayOverride(document, root, overrideNestedArrays);
+}
+
+
+/*
+ * Merges the pathSpecTree into the sourceDocument similar to $addFields but it also accepts
+ * an additional flag to override nested arrays to be converted into nested document paths.
+ */
+static pgbson *
+MergeDocumentWithArrayOverride(pgbson *sourceDocument, const
+							   BsonIntermediatePathNode *pathSpecTree,
+							   bool overrideNestedArrays)
+{
 	pgbson_writer writer;
-	bson_iter_t documentIterator;
 	PgbsonWriterInit(&writer);
-	PgbsonInitIterator(document, &documentIterator);
+
+	bson_iter_t documentIterator;
+	PgbsonInitIterator(sourceDocument, &documentIterator);
+
 	bool projectNonMatchingField = true;
 	ProjectDocumentState projectDocState = {
 		.isPositionalAlreadyEvaluated = false,
-		.parentDocument = document,
+		.parentDocument = sourceDocument,
 		.pendingProjectionState = NULL,
-		.skipIntermediateArrayFields = true,
+		.skipIntermediateArrayFields = overrideNestedArrays,
 	};
 
 	bool isInNestedArray = false;
-	TraverseObjectAndAppendToWriter(&documentIterator, root, &writer,
+	TraverseObjectAndAppendToWriter(&documentIterator, pathSpecTree, &writer,
 									projectNonMatchingField,
 									&projectDocState, isInNestedArray);
+
 	return PgbsonWriterGetPgbson(&writer);
 }
 

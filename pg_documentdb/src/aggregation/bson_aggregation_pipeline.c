@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/planner/bson_aggregation_pipeline.c
+ * src/aggregation/bson_aggregation_pipeline.c
  *
  * Implementation of the backend query generation for pipelines.
  *
@@ -67,7 +67,6 @@
 #include "geospatial/bson_geospatial_common.h"
 #include "geospatial/bson_geospatial_geonear.h"
 #include "aggregation/bson_densify.h"
-#include "utils/version_utils.h"
 #include "collation/collation.h"
 #include "api_hooks.h"
 
@@ -76,6 +75,8 @@ extern bool EnableLookupUnwindSupport;
 extern bool EnableCollation;
 extern bool EnableFastPathPointLookupPlanner;
 extern bool DefaultInlineWriteOperations;
+extern bool EnableSimplifyGroupAccumulators;
+extern bool EnableSortbyIdPushDownToPrimaryKey;
 
 /* GUC to config tdigest compression */
 extern int TdigestCompressionAccuracy;
@@ -296,9 +297,6 @@ static bool CanInlineLookupStageMatch(const bson_value_t *stageValue, const
 static bool CheckFuncExprBsonDollarProjectGeonear(const FuncExpr *funcExpr);
 
 static void ValidateQueryTreeForMatchStage(const Query *query);
-static void DisallowExpressionsForTopLevelLet(
-	AggregationExpressionData *parsedExpression);
-static pgbson * ParseAndGetTopLevelVariableSpec(const bson_value_t *varSpec);
 static void RewriteFillToSetWindowFieldsSpec(const bson_value_t *fillSpec,
 											 bool *hasSortBy,
 											 bool *onlyHasValueFill,
@@ -776,9 +774,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.isProjectTransform = false,
 		.isOutputStage = false,
 		.pipelineCheckFunc = NULL,
-
-		/* vector $search is needed to be executed withing custom scan boundaries see EvaluateMetaSearchScore in vector/vector_utilities.c */
-		.allowBaseShardTablePushdown = false,
+		.allowBaseShardTablePushdown = true,
 		.stageEnum = Stage_Search,
 	},
 	{
@@ -1174,6 +1170,7 @@ MutateQueryWithPipeline(Query *query, List *aggregationStages,
 
 		query = definition->mutateFunc(&stage->stageValue, query,
 									   context);
+
 		context->requiresPersistentCursor =
 			context->requiresPersistentCursor ||
 			definition->requiresPersistentCursor(&stage->stageValue);
@@ -1323,10 +1320,13 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 							"Required variables aggregate must be valid")));
 	}
 
-	if (let.value_type != BSON_TYPE_EOD && !IsBsonValueEmptyDocument(&let))
+	pgbson *parsedVariables = ParseAndGetTopLevelVariableSpec(&let,
+															  &queryData->
+															  timeSystemVariables);
+
+	if (parsedVariables != NULL && !IsPgbsonEmptyDocument(parsedVariables))
 	{
-		pgbson *parsedLet = ParseAndGetTopLevelVariableSpec(&let);
-		context.variableSpec = (Expr *) MakeBsonConst(parsedLet);
+		context.variableSpec = (Expr *) MakeBsonConst(parsedVariables);
 	}
 
 	List *aggregationStages = ExtractAggregationStages(&pipelineValue,
@@ -1595,10 +1595,13 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 		}
 	}
 
-	if (let.value_type != BSON_TYPE_EOD && !IsBsonValueEmptyDocument(&let))
+	pgbson *parsedVariables = ParseAndGetTopLevelVariableSpec(&let,
+															  &queryData->
+															  timeSystemVariables);
+
+	if (parsedVariables != NULL && !IsPgbsonEmptyDocument(parsedVariables))
 	{
-		pgbson *parsedLet = ParseAndGetTopLevelVariableSpec(&let);
-		context.variableSpec = (Expr *) MakeBsonConst(parsedLet);
+		context.variableSpec = (Expr *) MakeBsonConst(parsedVariables);
 	}
 
 	if (sort.value_type != BSON_TYPE_EOD)
@@ -4326,7 +4329,7 @@ HandleSort(const bson_value_t *existingValue, Query *query,
 			SortByNulls sortByNulls = SORTBY_NULLS_DEFAULT;
 
 			/* If the sort is on _id and we can push it down to the primary key index, use ORDER BY object_id instead. */
-			if (strcmp(element.path, "_id") == 0 &&
+			if (EnableSortbyIdPushDownToPrimaryKey && strcmp(element.path, "_id") == 0 &&
 				CanSortByObjectId(query, context))
 			{
 				expr = (Expr *) makeVar(1,
@@ -4570,6 +4573,35 @@ AddGroupExpression(Expr *expression, ParseState *parseState, char *identifiers,
 
 
 /*
+ * Given an accumulator expression, checks whether it can be statically
+ * evaluated to a const. If it can, then returns a const "Expr".
+ * If not, returns the original docExpr.
+ */
+static Expr *
+GetDocumentExprForGroupAccumulatorValue(const bson_value_t *accumulatorValue,
+										Expr *docExpr)
+{
+	if (!EnableSimplifyGroupAccumulators)
+	{
+		return docExpr;
+	}
+
+	ParseAggregationExpressionContext parseContext = { 0 };
+	AggregationExpressionData expressionData;
+	memset(&expressionData, 0, sizeof(AggregationExpressionData));
+
+	ParseAggregationExpressionData(&expressionData, accumulatorValue, &parseContext);
+	if (expressionData.kind == AggregationExpressionKind_Constant)
+	{
+		/* Expression evaluates to a const, we don't need to pass in the input documentExpr */
+		return (Expr *) MakeBsonConst(PgbsonInitEmpty());
+	}
+
+	return docExpr;
+}
+
+
+/*
  * Simple helper method that has logic to insert a Group accumulator to a query.
  * This adds the group aggregate to the TargetEntry (for projection)
  * and also adds the necessary data to the bson_repath_and_build arguments.
@@ -4584,6 +4616,8 @@ AddSimpleGroupAccumulator(Query *query, const bson_value_t *accumulatorValue,
 	Expr *constValue = (Expr *) MakeBsonConst(BsonValueToDocumentPgbson(
 												  accumulatorValue));
 
+	documentExpr = GetDocumentExprForGroupAccumulatorValue(accumulatorValue,
+														   documentExpr);
 	Const *trueConst = makeConst(BOOLOID, -1, InvalidOid, 1, BoolGetDatum(true), false,
 								 true);
 	List *groupArgs;
@@ -4722,16 +4756,26 @@ AddMergeObjectsGroupAccumulator(Query *query, const bson_value_t *accumulatorVal
 	Const *sortArrayConst = makeConst(GetBsonArrayTypeOid(), -1, InvalidOid, -1,
 									  PointerGetDatum(arrayValue), false, false);
 
+
+	if (variableSpec != NULL)
+	{
+		/* If variableSpec only contains the time system variables, do not fail. */
+		Node *specNode = (Node *) variableSpec;
+		Const *specConst = (Const *) specNode;
+		pgbson *specBson = DatumGetPgBson(specConst->constvalue);
+
+		bson_iter_t iter;
+		if (PgbsonInitIteratorAtPath(specBson, "let", &iter))
+		{
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
+							errmsg("let with $mergeObjects is not supported yet")));
+		}
+	}
+
 	/*
 	 * Here we add a parameter with the input expression. The reason is we need
 	 * to evaluate it against the document after the sort takes place.
 	 */
-	if (variableSpec != NULL)
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-						errmsg("let with $mergeObjects is not supported yet")));
-	}
-
 	Expr *inputExpression = (Expr *) MakeBsonConst(BsonValueToDocumentPgbson(
 													   accumulatorValue));
 	Aggref *aggref = CreateMultiArgAggregate(BsonMergeObjectsFunctionOid(),
@@ -5160,16 +5204,18 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 
 	List *groupArgs;
 	Oid bsonExpressionGetFunction;
+	Expr *groupIdDocumentExpr = GetDocumentExprForGroupAccumulatorValue(&idValue,
+																		origEntry->expr);
 	if (context->variableSpec != NULL)
 	{
 		bsonExpressionGetFunction = BsonExpressionGetWithLetFunctionOid();
-		groupArgs = list_make4(origEntry->expr, MakeBsonConst(groupValue),
+		groupArgs = list_make4(groupIdDocumentExpr, MakeBsonConst(groupValue),
 							   MakeBoolValueConst(true), context->variableSpec);
 	}
 	else
 	{
 		bsonExpressionGetFunction = BsonExpressionGetFunctionOid();
-		groupArgs = list_make3(origEntry->expr, MakeBsonConst(groupValue),
+		groupArgs = list_make3(groupIdDocumentExpr, MakeBsonConst(groupValue),
 							   MakeBoolValueConst(true));
 	}
 
@@ -6904,129 +6950,6 @@ HandleMatchAggregationStage(const bson_value_t *existingValue, Query *query,
 }
 
 
-/* Call back function for top level command let parsing to disallow path expressions, CURRENT and ROOT for a top level variable spec. */
-static void
-DisallowExpressionsForTopLevelLet(AggregationExpressionData *parsedExpression)
-{
-	/* Path expressions, CURRENT and ROOT are not allowed in command level let. */
-	if (parsedExpression->kind == AggregationExpressionKind_Path ||
-		(parsedExpression->kind == AggregationExpressionKind_SystemVariable &&
-		 (parsedExpression->systemVariable.kind ==
-		  AggregationExpressionSystemVariableKind_Current ||
-		  parsedExpression->systemVariable.kind ==
-		  AggregationExpressionSystemVariableKind_Root)))
-	{
-		ereport(ERROR, errcode(ERRCODE_DOCUMENTDB_LOCATION4890500), errmsg(
-					"Command let Expression tried to access a field,"
-					" but this is not allowed because command let expressions"
-					" run before the query examines any documents."));
-	}
-}
-
-
-/*
- * Parses a top level command let i.e: find or aggregate let spec.
- * 1) Path expressions are not valid at this scope because there's no doc to evaluate against.
- * 2) Variable references are valid only if they reference a variable that is defined previously in the same let spec, i.e: {a: 1, b: "$$a", c: {$add: ["$$a", "$$b"]}}
- *
- * Given these 2 rules, we evaluate every variable expression we find against an empty document, using the current variable spec we're building to evaluate it.
- * As we evaluate expressions we rewrite the variable spec into a constant bson and return it.
- * The example in item 2, would be rewritten to: { a: 1, b: 1, c: 2 }.
- */
-static pgbson *
-ParseAndGetTopLevelVariableSpec(const bson_value_t *varSpec)
-{
-	ExpressionVariableContext varContext = { 0 };
-	ParseAggregationExpressionContext parseContext = {
-		.validateParsedExpressionFunc = &DisallowExpressionsForTopLevelLet,
-	};
-
-	/* Since path expressions are not allowed in this variable spec, we can evaluate them and transform
-	 * the spec to a constant bson. To evaluate them we use an empty document as the document we evaluate the expressions against. */
-	pgbson *emptyDoc = PgbsonInitEmpty();
-	StringView path = { .string = "", .length = 0 };
-	bool isNullOnEmpty = false;
-	pgbson_writer resultWriter;
-	PgbsonWriterInit(&resultWriter);
-
-	bson_iter_t varsIter;
-	BsonValueInitIterator(varSpec, &varsIter);
-	while (bson_iter_next(&varsIter))
-	{
-		StringView varName = bson_iter_key_string_view(&varsIter);
-		ValidateVariableName(varName);
-
-		const bson_value_t *varValue = bson_iter_value(&varsIter);
-
-		AggregationExpressionData expressionData = { 0 };
-		ParseAggregationExpressionData(&expressionData, varValue, &parseContext);
-
-		bson_value_t valueToWrite = { 0 };
-		if (expressionData.kind != AggregationExpressionKind_Constant)
-		{
-			pgbson_writer exprWriter;
-			PgbsonWriterInit(&exprWriter);
-			EvaluateAggregationExpressionDataToWriter(&expressionData, emptyDoc, path,
-													  &exprWriter, &varContext,
-													  isNullOnEmpty);
-
-			pgbson *evaluatedBson = PgbsonWriterGetPgbson(&exprWriter);
-
-			if (!IsPgbsonEmptyDocument(evaluatedBson))
-			{
-				pgbsonelement element = { 0 };
-				PgbsonToSinglePgbsonElement(evaluatedBson, &element);
-				valueToWrite = element.bsonValue;
-			}
-		}
-		else
-		{
-			valueToWrite = expressionData.value;
-		}
-
-		/* if it evaluates to an empty document let's convert to $$REMOVE so that we don't need to evaluate operators again and just treat it as EOD. */
-		if (valueToWrite.value_type == BSON_TYPE_EOD)
-		{
-			valueToWrite.value_type = BSON_TYPE_UTF8;
-			valueToWrite.value.v_utf8.str = "$$REMOVE";
-			valueToWrite.value.v_utf8.len = 8;
-			PgbsonWriterAppendValue(&resultWriter, varName.string, varName.length,
-									&valueToWrite);
-		}
-		else
-		{
-			/* To write it to the result we need to wrap all expressions around a $literal, so that when the spec is parsed down level they are treated as constants
-			 * if it encounters something that was a result of the expression that could be interpreted as non-constant. i.e $concat: ["$", "field"] -> "$field"
-			 * We should parse that as a literal $field down level, rather than a field expression.
-			 * However to insert it in the temp context, we should preserve the evaluated value to get correctnes if we have a case where a variable is used in operators within the same let.
-			 * i.e {"a": "2", "b": {"$sum": ["$$a", 2]}} we want sum to get "2" when it evaluates the variable $$a reference instead of getting { "$literal": "2" }. */
-			pgbson_writer literalWriter;
-			PgbsonWriterStartDocument(&resultWriter, varName.string, varName.length,
-									  &literalWriter);
-			PgbsonWriterAppendValue(&literalWriter, "$literal", 8, &valueToWrite);
-			PgbsonWriterEndDocument(&resultWriter, &literalWriter);
-		}
-
-		VariableData variableData = {
-			.name = varName,
-			.isConstant = true,
-			.bsonValue = valueToWrite,
-		};
-
-		VariableContextSetVariableData(&varContext, &variableData);
-	}
-
-	if (varContext.context.table != NULL && !varContext.hasSingleVariable)
-	{
-		hash_destroy(varContext.context.table);
-	}
-
-	pfree(emptyDoc);
-
-	return PgbsonWriterGetPgbson(&resultWriter);
-}
-
-
 /*
  * We will try to optimize the aggregation stages here. Currently this method checks
  * if all the stages are referring to a single collection that is not sharded then we
@@ -7087,12 +7010,23 @@ TryOptimizeAggregationPipelines(List **aggregationStages,
 					 * This is because $lookup followed by $unwind is a common pattern and can be optimized to a single stage,
 					 * if $unwind is requested on the same field which is the "as" field in lookup stage.
 					 */
+					bool preserveEmptyArrays = false;
 					if (CanInlineLookupWithUnwind(&stage->stageValue,
-												  &nextStage->stageValue))
+												  &nextStage->stageValue,
+												  &preserveEmptyArrays))
 					{
 						*aggregationStages = foreach_delete_current(stagesList, cell);
 						AggregationStage *lookupUnwindStage = nextStage;
-						lookupUnwindStage->stageValue = stage->stageValue;
+
+						/* merge preserve empty arrays and the lookup spec */
+						pgbson_writer writer;
+						PgbsonWriterInit(&writer);
+						PgbsonWriterAppendBool(&writer, "preserveNullAndEmptyArrays", 26,
+											   preserveEmptyArrays);
+						PgbsonWriterAppendValue(&writer, "lookup", 6, &stage->stageValue);
+
+						lookupUnwindStage->stageValue = ConvertPgbsonToBsonValue(
+							PgbsonWriterGetPgbson(&writer));
 						lookupUnwindStage->stageDefinition =
 							(AggregationStageDefinition *) &LookupUnwindStageDefinition;
 					}

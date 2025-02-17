@@ -16,6 +16,7 @@
 #include <utils/rel.h>
 #include <utils/syscache.h>
 #include <commands/defrem.h>
+#include <catalog/pg_collation.h>
 
 #include "api_hooks.h"
 #include "io/bson_core.h"
@@ -32,8 +33,6 @@
 /* Data-types */
 /* --------------------------------------------------------- */
 
-extern SearchQueryEvalDataWorker *VectorEvaluationData;
-
 /* --------------------------------------------------------- */
 /* Forward declaration */
 /* --------------------------------------------------------- */
@@ -48,45 +47,6 @@ static Oid GetSimilarityOperatorOidByFamilyOid(Oid operatorFamilyOid, Oid
 /* Top level exports */
 /* --------------------------------------------------------- */
 
-/*
- * This function creates a FunctionCallInfoBaseData for calling to the
- * vector distance calculation function in pgvector. FunctionCallInfoBaseData
- * stores the query vector and the information about the distance function.
- * FunctionCallInfoBaseData is then cached and later used for each input vector
- * to calculate distance scores.
- */
-FunctionCallInfoBaseData *
-CreateFCInfoForScoreCalculation(const SearchQueryEvalData *queryEvalData)
-{
-	HeapTuple opertup = SearchSysCache1(OPEROID, ObjectIdGetDatum(
-											queryEvalData->SimilaritySearchOpOid));
-	if (!HeapTupleIsValid(opertup))
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-						errmsg(
-							"unsupported vector search operator type")));
-	}
-
-	Form_pg_operator operform = (Form_pg_operator) GETSTRUCT(opertup);
-	Oid funcid = operform->oprcode;
-	ReleaseSysCache(opertup);
-
-	FunctionCallInfoBaseData *fcinfo = palloc0(SizeForFunctionCallInfo(2));
-	FmgrInfo *flinfo = palloc0(sizeof(FmgrInfo));
-	fmgr_info(funcid, flinfo);
-	CallContext *callcontext = makeNode(CallContext);
-	callcontext->atomic = false;
-	InitFunctionCallInfoData(*fcinfo, flinfo, 2 /* args count */,
-
-	                         /*invalidOid*/ 0, (Node *) callcontext, NULL);
-
-	fcinfo->args[1].value = queryEvalData->QueryVector;
-	fcinfo->args[0].isnull = false;  /* Assuming the argument is not NULL */
-	fcinfo->args[1].isnull = false;
-
-	return fcinfo;
-}
-
 
 /*
  *  Given an input document, this document uses the following information stored in the VectorEvaluationData
@@ -100,71 +60,24 @@ CreateFCInfoForScoreCalculation(const SearchQueryEvalData *queryEvalData)
 double
 EvaluateMetaSearchScore(pgbson *document)
 {
-	if (VectorEvaluationData == NULL)
-	{
-		/*
-		 * If VectorEvaluationData is NULL, it means that the execution is outside of the custom scan.
-		 * This can happen when vector search with a filter
-		 * We get the similarity score from the metadata field __cosmos_meta__.score in the document.
-		 * If the metadata field is not available, we throw an error.
-		 */
-		const char *metaScorePathName =
-			VECTOR_METADATA_FIELD_NAME "." VECTOR_METADATA_SCORE_FIELD_NAME;
-		bson_iter_t documentIterator;
-		if (PgbsonInitIteratorAtPath(document, metaScorePathName, &documentIterator))
-		{
-			return BsonValueAsDouble(bson_iter_value(&documentIterator));
-		}
-		else
-		{
-			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40218),
-							errmsg(
-								"query requires search score metadata, but it is not available")));
-		}
-	}
-
-	bool isNull = false;
-	Datum res = command_bson_extract_vector_base(document,
-												 VectorEvaluationData->VectorPathName,
-												 &isNull);
-
-	if (isNull)
-	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
-						errmsg("Vector field should not be null.")));
-	}
-
-	VectorEvaluationData->SimilarityFuncInfo->args[0].value = res;
-
-	Datum result = FunctionCallInvoke(VectorEvaluationData->SimilarityFuncInfo);
-
-	VectorEvaluationData->SimilarityFuncInfo->args[0].value = (Datum) 0;
-
 	/*
-	 *  The score calculation logic mimics the distance calculations for
-	 *  different distance functions.
-	 *  https://github.com/pgvector/pgvector#distances
+	 * If VectorEvaluationData is NULL, it means that the execution is outside of the custom scan.
+	 * This can happen when vector search with a filter
+	 * We get the similarity score from the metadata field __cosmos_meta__.score in the document.
+	 * If the metadata field is not available, we throw an error.
 	 */
-	if (VectorEvaluationData->SimilaritySearchOpOid ==
-		VectorCosineSimilaritySearchOperatorId())
+	const char *metaScorePathName =
+		VECTOR_METADATA_FIELD_NAME "." VECTOR_METADATA_SCORE_FIELD_NAME;
+	bson_iter_t documentIterator;
+	if (PgbsonInitIteratorAtPath(document, metaScorePathName, &documentIterator))
 	{
-		return 1.0 - DatumGetFloat8(result);
-	}
-	else if (VectorEvaluationData->SimilaritySearchOpOid ==
-			 VectorIPSimilaritySearchOperatorId())
-	{
-		return -1.0 * DatumGetFloat8(result);
-	}
-	else if (VectorEvaluationData->SimilaritySearchOpOid ==
-			 VectorL2SimilaritySearchOperatorId())
-	{
-		return DatumGetFloat8(result);
+		return BsonValueAsDouble(bson_iter_value(&documentIterator));
 	}
 	else
 	{
-		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40218),
 						errmsg(
-							"unsupported vector search operator type")));
+							"query requires search score metadata, but it is not available")));
 	}
 }
 
@@ -341,14 +254,14 @@ GenerateVectorSortExpr(const char *queryVectorPath,
 {
 	Datum queryVectorPathDatum = CStringGetTextDatum(queryVectorPath);
 	Const *vectorSimilarityIndexPathConst = makeConst(
-		TEXTOID, -1, InvalidOid, -1, queryVectorPathDatum,
+		TEXTOID, -1, DEFAULT_COLLATION_OID, -1, queryVectorPathDatum,
 		false, false);
 
 	/* ApiCatalogSchemaName.bson_extract_vector(document, 'elem') */
 	List *args = list_make2(documentExpr, vectorSimilarityIndexPathConst);
 	Expr *vectorExractionFromDocFunc = (Expr *) makeFuncExpr(
 		ApiCatalogBsonExtractVectorFunctionId(), VectorTypeId(),
-		args, InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+		args, InvalidOid, DEFAULT_COLLATION_OID, COERCE_EXPLICIT_CALL);
 
 	List *castArgsLeft = list_make3(vectorExractionFromDocFunc,
 									lsecond(vectorCastFunc->args),
@@ -435,7 +348,7 @@ GenerateVectorExractionExprFromQueryWithCast(Node *vectorQuerySpecNode,
 	/* we extract the vector from the query */
 	Datum const_value = CStringGetTextDatum("vector");
 
-	Const *queryText = makeConst(TEXTOID, -1, /*typemod value*/ InvalidOid,
+	Const *queryText = makeConst(TEXTOID, -1, /*typemod value*/ DEFAULT_COLLATION_OID,
 								 -1,     /* length of the pointer type*/
 								 const_value, false /*constisnull*/,
 								 false /* constbyval*/);
@@ -445,7 +358,7 @@ GenerateVectorExractionExprFromQueryWithCast(Node *vectorQuerySpecNode,
 			ApiCatalogBsonExtractVectorFunctionId(),
 			VectorTypeId(),
 			queryArgs,
-			InvalidOid, InvalidOid,
+			InvalidOid, DEFAULT_COLLATION_OID,
 			COERCE_EXPLICIT_CALL);
 
 	List *castArgs = list_make3(
@@ -455,7 +368,7 @@ GenerateVectorExractionExprFromQueryWithCast(Node *vectorQuerySpecNode,
 	Expr *vectorExractionFromQueryFuncWithCast =
 		(Expr *) makeFuncExpr(vectorCastFunc->funcid, vectorCastFunc->funcresulttype,
 							  castArgs, InvalidOid,
-							  InvalidOid,
+							  DEFAULT_COLLATION_OID,
 							  COERCE_EXPLICIT_CALL);
 
 	return vectorExractionFromQueryFuncWithCast;

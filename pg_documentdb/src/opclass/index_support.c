@@ -67,7 +67,7 @@ typedef struct
 	/*
 	 * Mongo query operator type
 	 */
-	MongoQueryOperatorType operator;
+	ForceIndexOpType operator;
 
 	/*
 	 * Update the index list to filter out non-applicable
@@ -141,34 +141,47 @@ static bool TryUseAlternateIndexGeonear(PlannerInfo *root, RelOptInfo *rel,
 										MatchIndexPath matchIndexPath);
 static List * UpdateIndexListForText(List *existingIndex,
 									 ReplaceExtensionFunctionContext *context);
+static List * UpdateIndexListForVector(List *existingIndex,
+									   ReplaceExtensionFunctionContext *context);
 static bool MatchIndexPathForText(IndexPath *path, void *matchContext);
+static bool MatchIndexPathForVector(IndexPath *path, void *matchContext);
 static bool PushTextQueryToRuntime(PlannerInfo *root, RelOptInfo *rel,
 								   ReplaceExtensionFunctionContext *context,
 								   MatchIndexPath matchIndexPath);
 static void ThrowNoTextIndexFound(void);
+static void ThrowNoVectorIndexFound(void);
+
 static bool MatchIndexPathEquals(IndexPath *path, void *matchContext);
 
 
 static const ForceIndexSupportFuncs ForceIndexOperatorSupport[] =
 {
 	{
-		.operator = QUERY_OPERATOR_GEONEAR,
+		.operator = ForceIndexOpType_GeoNear,
 		.updateIndexes = &UpdateIndexListForGeonear,
 		.matchIndexPath = &MatchIndexPathForGeonear,
 		.alternatePath = &TryUseAlternateIndexGeonear,
 		.noIndexHandler = &ThrowGeoNearUnableToFindIndex
 	},
 	{
-		.operator = QUERY_OPERATOR_TEXT,
+		.operator = ForceIndexOpType_Text,
 		.updateIndexes = &UpdateIndexListForText,
 		.matchIndexPath = &MatchIndexPathForText,
 		.noIndexHandler = &ThrowNoTextIndexFound,
 		.alternatePath = &PushTextQueryToRuntime,
+	},
+	{
+		.operator = ForceIndexOpType_VectorSearch,
+		.updateIndexes = &UpdateIndexListForVector,
+		.matchIndexPath = &MatchIndexPathForVector,
+		.noIndexHandler = &ThrowNoVectorIndexFound,
 	}
 };
 
 static const int ForceIndexOperatorsCount = sizeof(ForceIndexOperatorSupport) /
 											sizeof(ForceIndexSupportFuncs);
+
+extern bool EnableVectorForceIndexPushdown;
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -494,8 +507,8 @@ void
 ForceIndexForQueryOperators(PlannerInfo *root, RelOptInfo *rel,
 							ReplaceExtensionFunctionContext *context)
 {
-	if (context->forceIndexQueryOpData.type == QUERY_OPERATOR_UNKNOWN ||
-		(context->forceIndexQueryOpData.type == QUERY_OPERATOR_GEONEAR &&
+	if (context->forceIndexQueryOpData.type == ForceIndexOpType_None ||
+		(context->forceIndexQueryOpData.type == ForceIndexOpType_GeoNear &&
 		 !TryFindGeoNearOpExpr(root, context)))
 	{
 		/* If no special operator requirement or geonear with no geonear operator (other geo operators)
@@ -974,33 +987,7 @@ ReplaceFunctionOperatorsInPlanPath(PlannerInfo *root, RelOptInfo *rel, Path *pat
 
 		if (vectorDefinition != NULL)
 		{
-			/*
-			 *  indexPath->indexorderbys contains a list of order by expressions. For vector search, it is of the following form.
-			 *  Order By: (vector(ApiCatalogSchemaName.bson_extract_vector(collection.document, 'vectorPath'::text), 3, true) <#> '[3,4.9,1]'::vector)
-			 *
-			 *  OpExpr (FuncExpr (FuncExpr(document, CosntVectorPath), CosntDimension, ConstTrue), OpId, ConstVector)
-			 *
-			 *  Here we extarct:
-			 *      1. The path name 'vectorPath' on which the index is defined.
-			 *      2. Vector serch operator (<#> stands for COSINE)
-			 *      3. The query vector [3, 4, 9, 1]
-			 *
-			 *  And store that for future usage by the $meta which would use this information to compute score for the resulting vectors.
-			 */
-			OpExpr *sortExpr = (OpExpr *) linitial(indexPath->indexorderbys);
-
-
-			FuncExpr *vectorCastFunc = (FuncExpr *) linitial(sortExpr->args);
-			FuncExpr *bsonExtractFunc = (FuncExpr *) linitial(vectorCastFunc->args);
-			Const *vectorPathConst = (Const *) lsecond(bsonExtractFunc->args);
-
-			Const *vectorConst = (Const *) lsecond(sortExpr->args);
-
 			context->hasVectorSearchQuery = true;
-			context->queryDataForVectorSearch.VectorPathName =
-				vectorPathConst->constvalue;
-			context->queryDataForVectorSearch.QueryVector = vectorConst->constvalue;
-			context->queryDataForVectorSearch.SimilaritySearchOpOid = sortExpr->opno;
 			context->queryDataForVectorSearch.VectorAccessMethodOid =
 				indexPath->indexinfo->relam;
 
@@ -1009,6 +996,12 @@ ReplaceFunctionOperatorsInPlanPath(PlannerInfo *root, RelOptInfo *rel, Path *pat
 			 * ApiCatalogSchemaName.bson_search_param(document, '{ "nProbes": 4 }'::ApiCatalogSchemaName.bson)
 			 */
 			ExtractAndSetSearchParamterFromWrapFunction(indexPath, context);
+
+			if (EnableVectorForceIndexPushdown)
+			{
+				context->forceIndexQueryOpData.type = ForceIndexOpType_VectorSearch;
+				context->forceIndexQueryOpData.path = indexPath;
+			}
 		}
 		else
 		{
@@ -1039,7 +1032,7 @@ ReplaceFunctionOperatorsInPlanPath(PlannerInfo *root, RelOptInfo *rel, Path *pat
 						ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 										errmsg("Too many text expressions")));
 					}
-					context->forceIndexQueryOpData.type = QUERY_OPERATOR_TEXT;
+					context->forceIndexQueryOpData.type = ForceIndexOpType_Text;
 					context->forceIndexQueryOpData.path = indexPath;
 					textIndexData = palloc0(sizeof(QueryTextIndexData));
 					textIndexData->indexOptions = options;
@@ -1047,7 +1040,7 @@ ReplaceFunctionOperatorsInPlanPath(PlannerInfo *root, RelOptInfo *rel, Path *pat
 
 					ReplaceExtensionFunctionContext childContext = {
 						{ 0 }, false, false, context->inputData,
-						{ .path = NULL, .type = QUERY_OPERATOR_UNKNOWN, .opExtraState =
+						{ .path = NULL, .type = ForceIndexOpType_None, .opExtraState =
 							  NULL }
 					};
 					childContext.forceIndexQueryOpData = context->forceIndexQueryOpData;
@@ -1059,7 +1052,7 @@ ReplaceFunctionOperatorsInPlanPath(PlannerInfo *root, RelOptInfo *rel, Path *pat
 				{
 					ReplaceExtensionFunctionContext childContext = {
 						{ 0 }, false, false, context->inputData,
-						{ .path = NULL, .type = QUERY_OPERATOR_UNKNOWN, .opExtraState =
+						{ .path = NULL, .type = ForceIndexOpType_None, .opExtraState =
 							  NULL }
 					};
 					rinfo->clause = ProcessRestrictionInfoAndRewriteFuncExpr(
@@ -1076,7 +1069,7 @@ ReplaceFunctionOperatorsInPlanPath(PlannerInfo *root, RelOptInfo *rel, Path *pat
 				if (IsA(orderByExpr, OpExpr) && ((OpExpr *) orderByExpr)->opno ==
 					BsonGeonearDistanceOperatorId())
 				{
-					context->forceIndexQueryOpData.type = QUERY_OPERATOR_GEONEAR;
+					context->forceIndexQueryOpData.type = ForceIndexOpType_GeoNear;
 					context->forceIndexQueryOpData.path = indexPath;
 				}
 			}
@@ -1113,7 +1106,7 @@ ProcessRestrictionInfoAndRewriteFuncExpr(Expr *clause,
 			 * the serialization details of the index. This is then later used in $meta
 			 * queries to get the rank
 			 */
-			context->forceIndexQueryOpData.type = QUERY_OPERATOR_TEXT;
+			context->forceIndexQueryOpData.type = ForceIndexOpType_Text;
 			QueryTextIndexData *textIndexData =
 				(QueryTextIndexData *) context->forceIndexQueryOpData.opExtraState;
 
@@ -1146,7 +1139,7 @@ ProcessRestrictionInfoAndRewriteFuncExpr(Expr *clause,
 	else if (IsA(clause, NullTest))
 	{
 		NullTest *nullTest = (NullTest *) clause;
-		if (context->forceIndexQueryOpData.type == QUERY_OPERATOR_UNKNOWN &&
+		if (context->forceIndexQueryOpData.type == ForceIndexOpType_None &&
 			nullTest->nulltesttype == IS_NOT_NULL &&
 			IsA(nullTest->arg, FuncExpr))
 		{
@@ -1162,7 +1155,7 @@ ProcessRestrictionInfoAndRewriteFuncExpr(Expr *clause,
 				 * e.g. Sharded collections cases where ORDER BY is not pushed to the shards so we only
 				 * get the PFE of geospatial operators.
 				 */
-				context->forceIndexQueryOpData.type = QUERY_OPERATOR_GEONEAR;
+				context->forceIndexQueryOpData.type = ForceIndexOpType_GeoNear;
 			}
 		}
 	}
@@ -1696,4 +1689,42 @@ ThrowNoTextIndexFound()
 {
 	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INDEXNOTFOUND),
 					errmsg("text index required for $text query")));
+}
+
+
+static void
+ThrowNoVectorIndexFound(void)
+{
+	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INDEXNOTFOUND),
+					errmsg("vector index required for $search query during pushdown")));
+}
+
+
+static bool
+MatchIndexPathForVector(IndexPath *indexPath, void *matchContext)
+{
+	const VectorIndexDefinition *def = GetVectorIndexDefinitionByIndexAmOid(
+		indexPath->indexinfo->relam);
+	return def != NULL;
+}
+
+
+static List *
+UpdateIndexListForVector(List *existingIndex,
+						 ReplaceExtensionFunctionContext *context)
+{
+	/* Trim all indexes except vector indexes for the purposes of planning */
+	List *newIndexesListForVector = NIL;
+	ListCell *indexCell;
+	foreach(indexCell, existingIndex)
+	{
+		IndexOptInfo *index = lfirst_node(IndexOptInfo, indexCell);
+		const VectorIndexDefinition *def = GetVectorIndexDefinitionByIndexAmOid(
+			index->relam);
+		if (def != NULL)
+		{
+			newIndexesListForVector = lappend(newIndexesListForVector, index);
+		}
+	}
+	return newIndexesListForVector;
 }

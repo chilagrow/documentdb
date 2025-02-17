@@ -9,3 +9,5 @@
 
 # Differing names can have differing table column widths
 s/^-[+-]{2,}$/---------------------------------------------------------------------/g
+# Replace the values of the time system variables ($$NOW) with a constant
+s/\"sn\" : \{ \"\$date\" : \{ \"\$numberLong\" : \"[0-9]*\" \} \}/\"sn\" : NOW_SYS_VARIABLE/g

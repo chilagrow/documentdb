@@ -8,10 +8,9 @@
 
 The project comprises of two primary components, which work together to support document operations.
 
-- pg_documentdb_core : PostgreSQL extension introducing BSON datatype support and operations for native Postgres.
-- pg_documentdb : The public API surface for DocumentDB providing CRUD functionality on documents in the store.
+- **pg_documentdb_core :** PostgreSQL extension introducing BSON datatype support and operations for native Postgres.
+- **pg_documentdb :** The public API surface for DocumentDB providing CRUD functionality on documents in the store.
 
-![Architecture](images/architecture.png)
 
 ## Why DocumentDB ?
 
@@ -110,7 +109,7 @@ SELECT documentdb_api.create_collection('documentdb','patient');
 
 #### Insert documents
 
-The [documentdb_api.insertOne()](https://github.com/microsoft/documentdb/wiki/Functions#insert_one) command is used to add a single document into a collection.
+The [documentdb_api.insert_one](https://github.com/microsoft/documentdb/wiki/Functions#insert_one) command is used to add a single document into a collection.
 
 ```sql
 select documentdb_api.insert_one('documentdb','patient', '{ "patient_id": "P001", "name": "Alice Smith", "age": 30, "phone_number": "555-0123", "registration_year": "2023","conditions": ["Diabetes", "Hypertension"]}');
@@ -262,7 +261,7 @@ SELECT cursorpage FROM documentdb_api.aggregate_cursor_first_page('documentdb', 
 - Please refer to page for contributing to our [Roadmap list](https://github.com/orgs/microsoft/projects/1407/views/1).
 - [FerretDB](https://github.com/FerretDB/FerretDB) integration allows using DocumentDB as backend engine.
 
-Contributors and users can join the [Discord Server](https://aka.ms/documentdb_discord) for quick collaboration.
+Contributors and users can join the [DocumentDB Discord channel in the Microsoft OSS server](https://aka.ms/documentdb_discord) for quick collaboration.
 
 ### FAQs
 

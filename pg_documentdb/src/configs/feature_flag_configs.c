@@ -27,6 +27,12 @@ bool EnableVectorHNSWIndex = DEFAULT_ENABLE_VECTOR_HNSW_INDEX;
 #define DEFAULT_ENABLE_VECTOR_PRE_FILTER false
 bool EnableVectorPreFilter = DEFAULT_ENABLE_VECTOR_PRE_FILTER;
 
+#define DEFAULT_ENABLE_VECTOR_PRE_FILTER_V2 false
+bool EnableVectorPreFilterV2 = DEFAULT_ENABLE_VECTOR_PRE_FILTER_V2;
+
+#define DEFAULT_ENABLE_VECTOR_FORCE_INDEX_PUSHDOWN false
+bool EnableVectorForceIndexPushdown = DEFAULT_ENABLE_VECTOR_FORCE_INDEX_PUSHDOWN;
+
 #define DEFAULT_ENABLE_LARGE_UNIQUE_INDEX_KEYS false
 bool DefaultEnableLargeUniqueIndexKeys = DEFAULT_ENABLE_LARGE_UNIQUE_INDEX_KEYS;
 
@@ -86,10 +92,20 @@ bool EnableMergeAcrossDB = DEFAULT_ENABLE_MERGE_ACROSS_DB;
 #define DEFAULT_ENABLE_MULTI_INDEX_RUM_JOIN false
 bool EnableMultiIndexRumJoin = DEFAULT_ENABLE_MULTI_INDEX_RUM_JOIN;
 
+#define DEFAULT_ENABLE_NOW_SYSTEM_VARIABLE false
+bool EnableNowSystemVariable = DEFAULT_ENABLE_NOW_SYSTEM_VARIABLE;
+
 /* Whether or not to enforce a per command backend timeout */
 /* TODO: Enable in V0.25 */
 #define DEFAULT_ENABLE_STATEMENT_TIMEOUT false
 bool EnableBackendStatementTimeout = DEFAULT_ENABLE_STATEMENT_TIMEOUT;
+
+#define DEFAULT_ENABLE_SIMPLIFY_GROUP_ACCUMULATORS true
+bool EnableSimplifyGroupAccumulators = DEFAULT_ENABLE_SIMPLIFY_GROUP_ACCUMULATORS;
+
+#define DEFAULT_ENABLE_SORT_BY_ID_PUSHDOWN_TO_PRIMARYKEY false
+bool EnableSortbyIdPushDownToPrimaryKey =
+	DEFAULT_ENABLE_SORT_BY_ID_PUSHDOWN_TO_PRIMARYKEY;
 
 void
 InitializeFeatureFlagConfigurations(const char *prefix, const char *newGucPrefix)
@@ -106,6 +122,20 @@ InitializeFeatureFlagConfigurations(const char *prefix, const char *newGucPrefix
 		gettext_noop(
 			"Enables support for vector pre-filtering feature for vector search in bson documents index."),
 		NULL, &EnableVectorPreFilter, DEFAULT_ENABLE_VECTOR_PRE_FILTER,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.enableVectorPreFilterV2", prefix),
+		gettext_noop(
+			"Enables support for vector pre-filtering v2 feature for vector search in bson documents index."),
+		NULL, &EnableVectorPreFilterV2, DEFAULT_ENABLE_VECTOR_PRE_FILTER_V2,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.enable_force_push_vector_index", prefix),
+		gettext_noop(
+			"Enables ensuring that vector index queries are always pushed to the vector index."),
+		NULL, &EnableVectorForceIndexPushdown, DEFAULT_ENABLE_VECTOR_FORCE_INDEX_PUSHDOWN,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
@@ -252,5 +282,29 @@ InitializeFeatureFlagConfigurations(const char *prefix, const char *newGucPrefix
 		gettext_noop(
 			"Whether to enable per statement backend timeout override in the backend."),
 		NULL, &EnableBackendStatementTimeout, DEFAULT_ENABLE_STATEMENT_TIMEOUT,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.enableNowSystemVariable", newGucPrefix),
+		gettext_noop(
+			"Enables support for the $$NOW time system variable."),
+		NULL, &EnableNowSystemVariable,
+		DEFAULT_ENABLE_NOW_SYSTEM_VARIABLE,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.enableSimplifyGroupAccumulators", newGucPrefix),
+		gettext_noop(
+			"Whether to enable parse time simplification of group accumulators."),
+		NULL, &EnableSimplifyGroupAccumulators,
+		DEFAULT_ENABLE_SIMPLIFY_GROUP_ACCUMULATORS,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.enableSortbyIdPushDownToPrimaryKey", newGucPrefix),
+		gettext_noop(
+			"Whether to push down sort by id to primary key"),
+		NULL, &EnableSortbyIdPushDownToPrimaryKey,
+		DEFAULT_ENABLE_SORT_BY_ID_PUSHDOWN_TO_PRIMARYKEY,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 }

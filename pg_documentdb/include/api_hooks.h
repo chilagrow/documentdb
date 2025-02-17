@@ -67,7 +67,7 @@ Datum RunQueryWithSequentialModification(const char *query, int expectedSPIOK,
 										 bool *isNull);
 
 /*
- * Whether or not the the base tables have sharding with distribution (true if DistributePostgreTable
+ * Whether or not the the base tables have sharding with distribution (true if DistributePostgresTable
  * is run).
  * the documents table name and the substring where the collectionId was found is provided as an input.
  */
@@ -183,5 +183,10 @@ struct Path * TryOptimizePathForBitmapAnd(struct PlannerInfo *root, struct
 										  BitmapHeapPath *heapPath);
 
 char * TryGetExtendedVersionRefreshQuery(void);
+
+
+void GetShardIdsAndNamesForCollection(Oid relationOid, const char *tableName,
+									  Datum **shardOidArray, Datum **shardNameArray,
+									  int32_t *shardCount);
 
 #endif
