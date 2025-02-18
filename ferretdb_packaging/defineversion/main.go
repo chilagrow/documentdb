@@ -62,9 +62,9 @@ var controlDefaultVer = regexp.MustCompile(`default_version\s*=\s*'([0-9]+\.[0-9
 //nolint:lll // for readibility
 var documentDBVer = regexp.MustCompile(`^v?(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)[-\.](?P<patch>0|[1-9]\d*)-?(?P<target>[0-9a-zA-Z]+)?-?(?P<targetSemVer>(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*))?$`)
 
-// debianVer matches allowed characters for debian package version,
+// upstreamVer matches not allowed characters of upstream version,
 // see https://www.debian.org/doc/debian-policy/ch-controlfields.html#version.
-var debianVer = regexp.MustCompile(`[^A-Za-z0-9~.+]`)
+var upstreamVer = regexp.MustCompile(`[^A-Za-z0-9~.+]`)
 
 // debugEnv logs all environment variables that start with `GITHUB_` or `INPUT_`
 // in debug level.
@@ -104,9 +104,14 @@ func controlVersion(f string) (string, error) {
 	return version, nil
 }
 
-// define builds the upstream version number for debian package using the environment variables of GitHub Actions.
+// define builds the upstream version number for debian package using
+// the environment variables of GitHub Actions.
 // If the release tag is set, it checks the tag matches the control version
 // and returns an error on mismatch.
+//
+// The debian upstream version does not allow `-` character and replaced with `~`.
+//
+// See upstream version in https://www.debian.org/doc/debian-policy/ch-controlfields.html#version.
 func define(controlDefaultVersion string, getenv githubactions.GetenvFunc) (string, error) {
 	version, err := parseVersion(controlDefaultVersion)
 	if err != nil {
@@ -150,12 +155,12 @@ func define(controlDefaultVersion string, getenv githubactions.GetenvFunc) (stri
 }
 
 // defineForPR defines debian upstream version number for pull requests.
-// It replaces branch name with allowed chars of debian package version.
+// It replaces special characters in branch name with character `~`.
 func defineForPR(controlVersion, branch string) string {
 	// for branches like "dependabot/submodules/XXX"
 	parts := strings.Split(branch, "/")
 	branch = parts[len(parts)-1]
-	branch = debianVer.ReplaceAllString(branch, "~")
+	branch = upstreamVer.ReplaceAllString(branch, "~")
 
 	return fmt.Sprintf("%s~pr~%s", controlVersion, branch)
 }
@@ -185,8 +190,12 @@ func defineForTag(controlVersion string, tag string) (string, error) {
 	return tagVersion, nil
 }
 
-// parseVersion parses the version string and returns a semantic version string
-// accepted for debian upstream version.
+// parseVersion parses the version string and returns valid debian upstream version.
+//
+// If version contain specific target such as `v0.100.0-ferretdb`,
+// `0.100.0~ferretdb` is returned with `~` replacing not allowed `-`.
+// If target contains specific version such as `v0.100.0-ferretdb-2.0.1`,
+// it returns `0.100.0~ferretdb~2.0.1`.
 func parseVersion(version string) (string, error) {
 	match := documentDBVer.FindStringSubmatch(version)
 	if match == nil || len(match) != documentDBVer.NumSubexp()+1 {
@@ -197,17 +206,19 @@ func parseVersion(version string) (string, error) {
 	minor := match[documentDBVer.SubexpIndex("minor")]
 	patch := match[documentDBVer.SubexpIndex("patch")]
 
+	semVer := fmt.Sprintf("%s.%s.%s", major, minor, patch)
+
 	target := match[documentDBVer.SubexpIndex("target")]
 	if target == "" {
-		return major + "." + minor + "." + patch, nil
+		return semVer, nil
 	}
 
 	targetSemVer := match[documentDBVer.SubexpIndex("targetSemVer")]
 	if targetSemVer == "" {
-		return major + "." + minor + "." + patch + "-" + target, nil
+		return fmt.Sprintf("%s~%s", semVer, target), nil
 	}
 
-	return major + "." + minor + "." + patch + "-" + target + "-" + targetSemVer, nil
+	return fmt.Sprintf("%s~%s~%s", semVer, target, targetSemVer), nil
 }
 
 // setResults sets action output parameters, summary, etc.

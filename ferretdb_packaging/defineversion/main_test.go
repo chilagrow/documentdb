@@ -122,7 +122,7 @@ func TestDefine(t *testing.T) {
 				"GITHUB_REF_TYPE":   "tag",
 			},
 			defaultVersion: "0.100-0",
-			expected:       "0.100.0-ferretdb",
+			expected:       "0.100.0~ferretdb",
 		},
 		"push/tag/ferretdb-specific-version": {
 			env: map[string]string{
@@ -132,7 +132,7 @@ func TestDefine(t *testing.T) {
 				"GITHUB_REF_TYPE":   "tag",
 			},
 			defaultVersion: "0.100-0",
-			expected:       "0.100.0-ferretdb-2.0.1",
+			expected:       "0.100.0~ferretdb~2.0.1",
 		},
 
 		"push/tag/mismatch": {
