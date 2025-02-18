@@ -46,15 +46,6 @@ jobs:
       - name: Setup Go
         uses: FerretDB/github-actions/setup-go@main
 
-      - name: Get latest release
-        uses: octokit/request-action@v2.x
-        id: tags
-        with:
-          route: GET /repos/microsoft/documentdb/git/matching-refs/tags
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - run: "echo latest release: '${{ steps.tags.outputs.data }}'"
-
       - name: Run tests
         run: |
           cd ferretdb_packaging
