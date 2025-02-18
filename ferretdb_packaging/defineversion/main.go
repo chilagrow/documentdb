@@ -16,7 +16,6 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -30,9 +29,6 @@ import (
 func main() {
 	controlFileF := flag.String("control-file", "../pg_documentdb/documentdb.control", "pg_documentdb/documentdb.control file path")
 
-	// https://docs.github.com/en/rest/git/refs?apiVersion=2022-11-28#list-matching-references
-	tagsF := flag.String("tags", "", "release tags of microsoft/documentdb in JSON format")
-
 	flag.Parse()
 
 	action := githubactions.New()
@@ -41,23 +37,14 @@ func main() {
 		action.Fatalf("%s", "-control-file flag is empty.")
 	}
 
-	if *tagsF == "" {
-		action.Fatalf("%s", "tags is empty.")
-	}
-
 	version, err := controlVersion(*controlFileF)
-	if err != nil {
-		action.Fatalf("%s", err)
-	}
-
-	tags, err := releaseTags(*tagsF)
 	if err != nil {
 		action.Fatalf("%s", err)
 	}
 
 	debugEnv(action)
 
-	res, err := define(version, tags, action.Getenv)
+	res, err := define(version, action.Getenv)
 	if err != nil {
 		action.Fatalf("%s", err)
 	}
@@ -82,12 +69,6 @@ var documentDBVer = regexp.MustCompile(`^v?(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1
 // disallowedVer matches disallowed characters of upstream version,
 // see https://www.debian.org/doc/debian-policy/ch-controlfields.html#version.
 var disallowedVer = regexp.MustCompile(`[^A-Za-z0-9~.+]`)
-
-// tag represents git tags references in JSON format specified in
-// https://docs.github.com/en/rest/git/refs?apiVersion=2022-11-28#list-matching-references.
-type tag struct {
-	Ref string `json:"ref"`
-}
 
 // debugEnv logs all environment variables that start with `GITHUB_` or `INPUT_`
 // in debug level.
@@ -127,23 +108,6 @@ func controlVersion(f string) (string, error) {
 	return version, nil
 }
 
-// releaseTags returns tags released by microsoft/documentdb.
-func releaseTags(tagsStr string) ([]string, error) {
-	tags := []tag{}
-
-	err := json.Unmarshal([]byte(tagsStr), &tags)
-	if err != nil {
-		return nil, err
-	}
-
-	res := make([]string, len(tags))
-	for i, t := range tags {
-		res[i] = strings.TrimLeft(t.Ref, "refs/tags/")
-	}
-
-	return res, nil
-}
-
 // define returns the upstream version for debian package using
 // the environment variables of GitHub Actions.
 // If the release tag is set, it checks the tag matches the control version
@@ -152,7 +116,7 @@ func releaseTags(tagsStr string) ([]string, error) {
 // The upstream version does not allow `-` character and replaced with `~`.
 //
 // See upstream version in https://www.debian.org/doc/debian-policy/ch-controlfields.html#version.
-func define(controlDefaultVersion string, documentDBTags []string, getenv githubactions.GetenvFunc) (string, error) {
+func define(controlDefaultVersion string, getenv githubactions.GetenvFunc) (string, error) {
 	version, err := parseVersion(controlDefaultVersion)
 	if err != nil {
 		return "", err
@@ -173,7 +137,7 @@ func define(controlDefaultVersion string, documentDBTags []string, getenv github
 			upstreamVersion, err = defineForBranch(version, refName)
 
 		case "tag":
-			upstreamVersion, err = defineForTag(documentDBTags, refName)
+			upstreamVersion, err = defineForTag(version, refName)
 
 		default:
 			err = fmt.Errorf("unhandled ref type %q for event %q", refType, event)
@@ -216,25 +180,18 @@ func defineForBranch(version, branch string) (string, error) {
 }
 
 // defineForTag defines debian upstream version for release builds.
-// It returns an error if tag version for documentdb is not already released by microsoft/documentdb.
-func defineForTag(documentDBTags []string, tag string) (string, error) {
+// It returns an error if tag does not contain default version.
+func defineForTag(defaultVersion string, tag string) (string, error) {
 	tagVersion, err := parseVersion(tag)
 	if err != nil {
 		return "", err
 	}
 
-	for _, t := range documentDBTags {
-		documentDBTag, err := parseVersion(t)
-		if err != nil {
-			return "", err
-		}
-
-		if strings.HasPrefix(tagVersion, documentDBTag) {
-			return tagVersion, nil
-		}
+	if !strings.HasPrefix(tagVersion, defaultVersion) {
+		return "", fmt.Errorf("release tag %s does not match control file default version %s", tagVersion, defaultVersion)
 	}
 
-	return "", fmt.Errorf("release tag %s does not match existing DocumentDB tags [%s]", tagVersion, strings.Join(documentDBTags, ","))
+	return tagVersion, nil
 }
 
 // parseVersion parses the version string and returns valid debian upstream version.
