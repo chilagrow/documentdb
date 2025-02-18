@@ -41,6 +41,7 @@ func TestDefine(t *testing.T) {
 	for name, tc := range map[string]struct {
 		env            map[string]string
 		defaultVersion string // pg_documentdb/documentdb.control file's default_version field
+		tags           []string
 		expected       string
 	}{
 		"pull_request": {
@@ -51,6 +52,7 @@ func TestDefine(t *testing.T) {
 				"GITHUB_REF_TYPE":   "branch",
 			},
 			defaultVersion: "0.100-0",
+			tags:           []string{"v0.100-0", "v0.101-0"},
 			expected:       "0.100.0~pr~define~docker~tag",
 		},
 
@@ -62,6 +64,7 @@ func TestDefine(t *testing.T) {
 				"GITHUB_REF_TYPE":   "branch",
 			},
 			defaultVersion: "0.100-0",
+			tags:           []string{"v0.100-0", "v0.101-0"},
 			expected:       "0.100.0~pr~mongo~go~driver~29d768e",
 		},
 
@@ -73,6 +76,7 @@ func TestDefine(t *testing.T) {
 				"GITHUB_REF_TYPE":   "branch",
 			},
 			defaultVersion: "0.100-0",
+			tags:           []string{"v0.100-0", "v0.101-0"},
 			expected:       "0.100.0~pr~define~docker~tag",
 		},
 
@@ -84,6 +88,7 @@ func TestDefine(t *testing.T) {
 				"GITHUB_REF_TYPE":   "branch",
 			},
 			defaultVersion: "0.100-0",
+			tags:           []string{"v0.100-0", "v0.101-0"},
 			expected:       "0.100.0~main",
 		},
 		"push/ferretdb": {
@@ -94,6 +99,7 @@ func TestDefine(t *testing.T) {
 				"GITHUB_REF_TYPE":   "branch",
 			},
 			defaultVersion: "0.100-0",
+			tags:           []string{"v0.100-0", "v0.101-0"},
 			expected:       "0.100.0~ferretdb",
 		},
 		"push/other": {
@@ -113,6 +119,7 @@ func TestDefine(t *testing.T) {
 				"GITHUB_REF_TYPE":   "tag",
 			},
 			defaultVersion: "0.100-0",
+			tags:           []string{"v0.100-0", "v0.101-0"},
 			expected:       "0.100.0",
 		},
 		"push/tag/ferretdb": {
@@ -123,6 +130,7 @@ func TestDefine(t *testing.T) {
 				"GITHUB_REF_TYPE":   "tag",
 			},
 			defaultVersion: "0.100-0",
+			tags:           []string{"v0.100-0", "v0.101-0"},
 			expected:       "0.100.0~ferretdb",
 		},
 		"push/tag/ferretdb-specific-version": {
@@ -133,6 +141,7 @@ func TestDefine(t *testing.T) {
 				"GITHUB_REF_TYPE":   "tag",
 			},
 			defaultVersion: "0.100-0",
+			tags:           []string{"v0.100-0", "v0.101-0"},
 			expected:       "0.100.0~ferretdb~2.0.1",
 		},
 
@@ -143,6 +152,7 @@ func TestDefine(t *testing.T) {
 				"GITHUB_REF_NAME":   "v0.100-1", // default version and tag mismatch
 				"GITHUB_REF_TYPE":   "tag",
 			},
+			tags:           []string{"v0.100-0", "v0.101-0"},
 			defaultVersion: "0.100-0",
 		},
 
@@ -164,6 +174,7 @@ func TestDefine(t *testing.T) {
 			},
 			defaultVersion: "0.100-0",
 			expected:       "0.100.0~main",
+			tags:           []string{"v0.100-0", "v0.101-0"},
 		},
 
 		"workflow_run": {
@@ -175,10 +186,11 @@ func TestDefine(t *testing.T) {
 			},
 			defaultVersion: "0.100-0",
 			expected:       "0.100.0~main",
+			tags:           []string{"v0.100-0", "v0.101-0"},
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			actual, err := define(tc.defaultVersion, getEnvFunc(t, tc.env))
+			actual, err := define(tc.defaultVersion, tc.tags, getEnvFunc(t, tc.env))
 			if tc.expected == "" {
 				require.Error(t, err)
 				return
@@ -188,6 +200,35 @@ func TestDefine(t *testing.T) {
 			assert.Equal(t, tc.expected, actual)
 		})
 	}
+}
+
+func TestReleaseTags(t *testing.T) {
+	tagStr := `[
+    {
+      "ref": "refs/tags/v0.100-0",
+      "node_id": "REF_kwDONuj1jLJyZWZzL3RhZ3MvdjAuMTAwLTA",
+      "url": "https://api.github.com/repos/FerretDB/documentdb/git/refs/tags/v0.100-0",
+      "object": {
+        "sha": "ae4b8438ab8f9f29d158c6fcd3c25d4f3d772fb0",
+        "type": "commit",
+        "url": "https://api.github.com/repos/FerretDB/documentdb/git/commits/ae4b8438ab8f9f29d158c6fcd3c25d4f3d772fb0"
+      }
+    },
+    {
+      "ref": "refs/tags/v0.101-0",
+      "node_id": "REF_kwDONuj1jLJyZWZzL3RhZ3MvdjAuMTAxLTA",
+      "url": "https://api.github.com/repos/FerretDB/documentdb/git/refs/tags/v0.101-0",
+      "object": {
+        "sha": "013056de0549cbe673879da0967c490a5184be0d",
+        "type": "tag",
+        "url": "https://api.github.com/repos/FerretDB/documentdb/git/tags/013056de0549cbe673879da0967c490a5184be0d"
+      }
+    }
+  ]`
+
+	tags, err := releaseTags(tagStr)
+	require.NoError(t, err)
+	require.Equal(t, []string{"v0.100-0", "v0.101-0"}, tags)
 }
 
 func TestResults(t *testing.T) {
