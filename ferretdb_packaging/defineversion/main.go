@@ -52,12 +52,15 @@ func main() {
 // see pg_documentdb_core/documentdb_core.control.
 var controlDefaultVer = regexp.MustCompile(`default_version\s*=\s*'([0-9]+\.[0-9]+-[0-9]+)'`)
 
-// documentDBVer is the version syntax used by documentdb.
+// documentDBVer is the version syntax used by documentdb and tagging releases.
 // For documentdb.control file, the version is in the format of `0.100-0`.
-// For release tags, it has a leading `v` such as `v0.100-0`.
+// For release tags, it has a leading `v` such as `v0.100-0`
+// It accepts documentdb format version like `0.100-0` and SemVer format version like `0.100.0`.
+// It may contain specific target such as `v0.100.0-ferretdb`,
+// and may specify specific target SemVer such as `v0.100.0-ferretdb-2.0.1`.
 //
 //nolint:lll // for readibility
-var documentDBVer = regexp.MustCompile(`^v?(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)-(?P<patch>0|[1-9]\d*)$`)
+var documentDBVer = regexp.MustCompile(`^v?(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)[-\.](?P<patch>0|[1-9]\d*)-?(?P<target>[0-9a-zA-Z]+)?-?(?P<targetSemVer>(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*))?$`)
 
 // debianVer matches allowed characters for debian package version,
 // see https://www.debian.org/doc/debian-policy/ch-controlfields.html#version.
@@ -101,7 +104,7 @@ func controlVersion(f string) (string, error) {
 	return version, nil
 }
 
-// define extracts debian version number from the environment variables of GitHub Actions.
+// define builds the upstream version number for debian package using the environment variables of GitHub Actions.
 // If the release tag is set, it checks the tag matches the control version
 // and returns an error on mismatch.
 func define(controlDefaultVersion string, getenv githubactions.GetenvFunc) (string, error) {
@@ -110,22 +113,22 @@ func define(controlDefaultVersion string, getenv githubactions.GetenvFunc) (stri
 		return "", err
 	}
 
-	var res string
+	var upstreamVersion string
 
 	switch event := getenv("GITHUB_EVENT_NAME"); event {
 	case "pull_request", "pull_request_target":
 		branch := strings.ToLower(getenv("GITHUB_HEAD_REF"))
-		res = defineForPR(version, branch)
+		upstreamVersion = defineForPR(version, branch)
 
 	case "push", "schedule", "workflow_run":
 		refName := strings.ToLower(getenv("GITHUB_REF_NAME"))
 
 		switch refType := strings.ToLower(getenv("GITHUB_REF_TYPE")); refType {
 		case "branch":
-			res, err = defineForBranch(version, refName)
+			upstreamVersion, err = defineForBranch(version, refName)
 
 		case "tag":
-			res, err = defineForTag(version, refName)
+			upstreamVersion, err = defineForTag(version, refName)
 
 		default:
 			err = fmt.Errorf("unhandled ref type %q for event %q", refType, event)
@@ -139,25 +142,25 @@ func define(controlDefaultVersion string, getenv githubactions.GetenvFunc) (stri
 		return "", err
 	}
 
-	if res == "" {
-		panic("both res and err are nil")
+	if upstreamVersion == "" {
+		panic("both upstreamVersion and err are nil")
 	}
 
-	return res, nil
+	return upstreamVersion, nil
 }
 
-// defineForPR defines debian version number for pull requests.
+// defineForPR defines debian upstream version number for pull requests.
 // It replaces branch name with allowed chars of debian package version.
-func defineForPR(version, branch string) string {
+func defineForPR(controlVersion, branch string) string {
 	// for branches like "dependabot/submodules/XXX"
 	parts := strings.Split(branch, "/")
 	branch = parts[len(parts)-1]
 	branch = debianVer.ReplaceAllString(branch, "~")
 
-	return fmt.Sprintf("%s~pr~%s", version, branch)
+	return fmt.Sprintf("%s~pr~%s", controlVersion, branch)
 }
 
-// defineForBranch defines debian version number for branch builds.
+// defineForBranch defines debian upstream version number for branches.
 func defineForBranch(version, branch string) (string, error) {
 	switch branch {
 	case "main", "ferretdb":
@@ -167,7 +170,7 @@ func defineForBranch(version, branch string) (string, error) {
 	}
 }
 
-// defineForTag defines debian version number for release build.
+// defineForTag defines debian upstream number for release builds.
 // It returns an error if tag version does not match the control version.
 func defineForTag(controlVersion string, tag string) (string, error) {
 	tagVersion, err := parseVersion(tag)
@@ -175,15 +178,15 @@ func defineForTag(controlVersion string, tag string) (string, error) {
 		return "", err
 	}
 
-	if tagVersion != controlVersion {
+	if !strings.HasPrefix(tagVersion, controlVersion) {
 		return "", fmt.Errorf("version in control file and release tag mismatch control:%s tag:%s", controlVersion, tagVersion)
 	}
 
 	return tagVersion, nil
 }
 
-// parseVersion parses the version string in the format `0.100-0` or `v0.100-0` and
-// returns a normalized version string in `0.100.0` format.
+// parseVersion parses the version string and returns a semantic version string
+// accepted for debian upstream version.
 func parseVersion(version string) (string, error) {
 	match := documentDBVer.FindStringSubmatch(version)
 	if match == nil || len(match) != documentDBVer.NumSubexp()+1 {
@@ -194,7 +197,17 @@ func parseVersion(version string) (string, error) {
 	minor := match[documentDBVer.SubexpIndex("minor")]
 	patch := match[documentDBVer.SubexpIndex("patch")]
 
-	return major + "." + minor + "." + patch, nil
+	target := match[documentDBVer.SubexpIndex("target")]
+	if target == "" {
+		return major + "." + minor + "." + patch, nil
+	}
+
+	targetSemVer := match[documentDBVer.SubexpIndex("targetSemVer")]
+	if targetSemVer == "" {
+		return major + "." + minor + "." + patch + "-" + target, nil
+	}
+
+	return major + "." + minor + "." + patch + "-" + target + "-" + targetSemVer, nil
 }
 
 // setResults sets action output parameters, summary, etc.

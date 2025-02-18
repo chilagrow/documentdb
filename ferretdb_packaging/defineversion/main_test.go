@@ -114,6 +114,26 @@ func TestDefine(t *testing.T) {
 			defaultVersion: "0.100-0",
 			expected:       "0.100.0",
 		},
+		"push/tag/ferretdb": {
+			env: map[string]string{
+				"GITHUB_EVENT_NAME": "push",
+				"GITHUB_HEAD_REF":   "",
+				"GITHUB_REF_NAME":   "v0.100.0-ferretdb",
+				"GITHUB_REF_TYPE":   "tag",
+			},
+			defaultVersion: "0.100-0",
+			expected:       "0.100.0-ferretdb",
+		},
+		"push/tag/ferretdb-specific-version": {
+			env: map[string]string{
+				"GITHUB_EVENT_NAME": "push",
+				"GITHUB_HEAD_REF":   "",
+				"GITHUB_REF_NAME":   "v0.100.0-ferretdb-2.0.1",
+				"GITHUB_REF_TYPE":   "tag",
+			},
+			defaultVersion: "0.100-0",
+			expected:       "0.100.0-ferretdb-2.0.1",
+		},
 
 		"push/tag/mismatch": {
 			env: map[string]string{
