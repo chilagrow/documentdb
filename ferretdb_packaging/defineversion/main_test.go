@@ -36,6 +36,7 @@ func getEnvFunc(t *testing.T, env map[string]string) func(string) string {
 		return val
 	}
 }
+
 func TestDefine(t *testing.T) {
 	for name, tc := range map[string]struct {
 		env            map[string]string
