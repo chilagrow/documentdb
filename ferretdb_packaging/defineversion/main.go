@@ -62,9 +62,9 @@ var controlDefaultVer = regexp.MustCompile(`default_version\s*=\s*'([0-9]+\.[0-9
 //nolint:lll // for readibility
 var documentDBVer = regexp.MustCompile(`^v?(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)[-\.](?P<patch>0|[1-9]\d*)-?(?P<target>[0-9a-zA-Z]+)?-?(?P<targetSemVer>(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*))?$`)
 
-// upstreamVer matches not allowed characters of upstream version,
+// disallowedVer matches disallowed characters of upstream version,
 // see https://www.debian.org/doc/debian-policy/ch-controlfields.html#version.
-var upstreamVer = regexp.MustCompile(`[^A-Za-z0-9~.+]`)
+var disallowedVer = regexp.MustCompile(`[^A-Za-z0-9~.+]`)
 
 // debugEnv logs all environment variables that start with `GITHUB_` or `INPUT_`
 // in debug level.
@@ -96,7 +96,7 @@ func controlVersion(f string) (string, error) {
 
 	match := controlDefaultVer.FindSubmatch(b)
 	if len(match) != 2 {
-		return "", fmt.Errorf("control file did not find default_version match file: %s", f)
+		return "", fmt.Errorf("control file did not find default_version: %s", f)
 	}
 
 	version := string(match[1])
@@ -104,12 +104,12 @@ func controlVersion(f string) (string, error) {
 	return version, nil
 }
 
-// define builds the upstream version number for debian package using
+// define returns the upstream version for debian package using
 // the environment variables of GitHub Actions.
 // If the release tag is set, it checks the tag matches the control version
 // and returns an error on mismatch.
 //
-// The debian upstream version does not allow `-` character and replaced with `~`.
+// The upstream version does not allow `-` character and replaced with `~`.
 //
 // See upstream version in https://www.debian.org/doc/debian-policy/ch-controlfields.html#version.
 func define(controlDefaultVersion string, getenv githubactions.GetenvFunc) (string, error) {
@@ -154,18 +154,18 @@ func define(controlDefaultVersion string, getenv githubactions.GetenvFunc) (stri
 	return upstreamVersion, nil
 }
 
-// defineForPR defines debian upstream version number for pull requests.
+// defineForPR defines debian upstream version for pull requests.
 // It replaces special characters in branch name with character `~`.
 func defineForPR(controlVersion, branch string) string {
 	// for branches like "dependabot/submodules/XXX"
 	parts := strings.Split(branch, "/")
 	branch = parts[len(parts)-1]
-	branch = upstreamVer.ReplaceAllString(branch, "~")
+	branch = disallowedVer.ReplaceAllString(branch, "~")
 
 	return fmt.Sprintf("%s~pr~%s", controlVersion, branch)
 }
 
-// defineForBranch defines debian upstream version number for branches.
+// defineForBranch defines debian upstream version for branches.
 func defineForBranch(version, branch string) (string, error) {
 	switch branch {
 	case "main", "ferretdb":
@@ -175,7 +175,7 @@ func defineForBranch(version, branch string) (string, error) {
 	}
 }
 
-// defineForTag defines debian upstream number for release builds.
+// defineForTag defines debian upstream version for release builds.
 // It returns an error if tag version does not match the control version.
 func defineForTag(controlVersion string, tag string) (string, error) {
 	tagVersion, err := parseVersion(tag)
@@ -184,7 +184,7 @@ func defineForTag(controlVersion string, tag string) (string, error) {
 	}
 
 	if !strings.HasPrefix(tagVersion, controlVersion) {
-		return "", fmt.Errorf("version in control file and release tag mismatch control:%s tag:%s", controlVersion, tagVersion)
+		return "", fmt.Errorf("control file default_version %s and release tag %s mismatch", controlVersion, tagVersion)
 	}
 
 	return tagVersion, nil
@@ -192,8 +192,8 @@ func defineForTag(controlVersion string, tag string) (string, error) {
 
 // parseVersion parses the version string and returns valid debian upstream version.
 //
-// If version contain specific target such as `v0.100.0-ferretdb`,
-// `0.100.0~ferretdb` is returned with `~` replacing not allowed `-`.
+// If version contains specific target such as `v0.100.0-ferretdb`,
+// `0.100.0~ferretdb` is returned with `~` replacing not permitted `-`.
 // If target contains specific version such as `v0.100.0-ferretdb-2.0.1`,
 // it returns `0.100.0~ferretdb~2.0.1`.
 func parseVersion(version string) (string, error) {
