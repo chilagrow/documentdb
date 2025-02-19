@@ -167,7 +167,7 @@ func defineForPR(controlDefaultVersion, branch string) string {
 func defineForBranch(controlDefaultVersion, branch string) (string, error) {
 	switch branch {
 	case "ferretdb":
-		return fmt.Sprintf("%s~%s", controlDefaultVersion, branch), nil
+		return fmt.Sprintf("%s~branch~%s", controlDefaultVersion, branch), nil
 	default:
 		return "", fmt.Errorf("unhandled branch %q", branch)
 	}
