@@ -9,7 +9,6 @@ on:
       - synchronize
   push:
     branches:
-      - main
       - ferretdb
     tags:
       - "*"

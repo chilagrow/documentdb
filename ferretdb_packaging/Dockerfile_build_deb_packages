@@ -5,6 +5,8 @@ ARG DEBIAN_FRONTEND=noninteractive
 ARG POSTGRES_VERSION=16
 ARG DOCUMENTDB_VERSION=''
 
+RUN test -n "$DOCUMENTDB_VERSION" || (echo "DOCUMENTDB_VERSION not set" && false)
+
 RUN apt-get update
 
 RUN apt-get install -y --no-install-recommends \
@@ -65,8 +67,6 @@ WORKDIR /build
 
 # Copy the source code into the container
 COPY . /build
-
-RUN test -n "$DOCUMENTDB_VERSION" || (echo "DOCUMENTDB_VERSION not set" && false)
 
 # Setup the debian packaging
 COPY ferretdb_packaging/debian_files /build/debian

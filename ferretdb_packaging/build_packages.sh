@@ -12,7 +12,7 @@ function show_help {
     echo "Mandatory Arguments:"
     echo "  --os                 OS to build packages for. Possible values: [deb11, deb12, ubuntu20.04, ubuntu22.04, ubuntu24.04]"
     echo "  --pg                 PG version to build packages for. Possible values: [15, 16]"
-    echo "  --version            The debian conformed documentdb version to build. Examples: [0.100.0, 0.100.0~main]"
+    echo "  --version            The debian conformed version of documentdb to build. Examples: [0.100.0, 0.100.0~ferretdb]"
     echo ""
     echo "Optional Arguments:"
     echo "  --test-clean-install Test installing the packages in a clean Docker container."
