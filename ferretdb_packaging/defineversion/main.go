@@ -16,7 +16,6 @@
 package main
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"os"
@@ -55,7 +54,7 @@ func main() {
 
 // controlDefaultVer matches major, minor and patch from default_version field in control file,
 // see pg_documentdb_core/documentdb_core.control.
-var controlDefaultVer = regexp.MustCompile(`^default_version\s=\s'(?P<major>[0-9]+)\.(?P<minor>[0-9]+)-(?P<patch>[0-9]+)'$`)
+var controlDefaultVer = regexp.MustCompile(`(?m)^default_version\s=\s'(?P<major>[0-9]+)\.(?P<minor>[0-9]+)-(?P<patch>[0-9]+)'$`)
 
 // tagVer is the syntax used by tags such as `v0.100.0`.
 // It may contain additional string such as `v0.100.0-ferretdb` and `v0.100.0-ferretdb-2.0.1`.
@@ -91,33 +90,21 @@ func debugEnv(action *githubactions.Action) {
 // and returns the control default version in SemVer format,
 // see pg_documentdb_core/documentdb_core.control.
 func readControlDefaultVersion(f string) (string, error) {
-	file, err := os.Open(f)
+	b, err := os.ReadFile(f)
 	if err != nil {
-		return "", fmt.Errorf("failed to read control file: %w", err)
+		return "", err
 	}
 
-	defer file.Close()
-
-	r := bufio.NewReader(file)
-
-	for {
-		var line []byte
-		line, _, err = r.ReadLine()
-		if err != nil {
-			return "", fmt.Errorf("control file did not find default_version: %w", err)
-		}
-
-		match := controlDefaultVer.FindSubmatch(line)
-		if match == nil || len(match) != controlDefaultVer.NumSubexp()+1 {
-			continue
-		}
-
-		major := match[tagVer.SubexpIndex("major")]
-		minor := match[tagVer.SubexpIndex("minor")]
-		patch := match[tagVer.SubexpIndex("patch")]
-
-		return fmt.Sprintf("%s.%s.%s", major, minor, patch), nil
+	match := controlDefaultVer.FindSubmatch(b)
+	if match == nil || len(match) != controlDefaultVer.NumSubexp()+1 {
+		return "", fmt.Errorf("control file did not find default_version: %s", f)
 	}
+
+	major := match[tagVer.SubexpIndex("major")]
+	minor := match[tagVer.SubexpIndex("minor")]
+	patch := match[tagVer.SubexpIndex("patch")]
+
+	return fmt.Sprintf("%s.%s.%s", major, minor, patch), nil
 }
 
 // define returns the upstream version using the environment variables of GitHub Actions.

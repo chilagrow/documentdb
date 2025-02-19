@@ -58,7 +58,7 @@ func TestDefine(t *testing.T) {
 			env: map[string]string{
 				"GITHUB_EVENT_NAME": "pull_request_target",
 				"GITHUB_HEAD_REF":   "define-docker-tag",
-				"GITHUB_REF_NAME":   "main",
+				"GITHUB_REF_NAME":   "ferretdb",
 				"GITHUB_REF_TYPE":   "branch",
 			},
 			controlDefaultVersion: "0.100.0",
@@ -196,11 +196,11 @@ func TestResults(t *testing.T) {
 	})
 	action := githubactions.New(githubactions.WithGetenv(getenv), githubactions.WithWriter(&stdout))
 
-	version := "0.100.0~main"
+	version := "0.100.0~ferretdb"
 
 	setResults(action, version)
 
-	expected := "version: 0.100.0~main\n"
+	expected := "version: 0.100.0~ferretdb\n"
 	assert.Equal(t, expected, stdout.String(), "stdout does not match")
 
 	b, err := io.ReadAll(summaryF)
@@ -209,7 +209,7 @@ func TestResults(t *testing.T) {
 
 	expectedOutput := `
 version<<_GitHubActionsFileCommandDelimeter_
-0.100.0~main
+0.100.0~ferretdb
 _GitHubActionsFileCommandDelimeter_
 `[1:]
 	b, err = io.ReadAll(outputF)
