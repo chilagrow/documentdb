@@ -154,9 +154,9 @@ func definePackageVersionForPR(controlDefaultVersion, branch string) string {
 	// for branches like "dependabot/submodules/XXX"
 	parts := strings.Split(branch, "/")
 	branch = parts[len(parts)-1]
-	branch = disallowedVer.ReplaceAllString(branch, "~")
+	res := fmt.Sprintf("%s-pr-%s", controlDefaultVersion, branch)
 
-	return fmt.Sprintf("%s~pr~%s", controlDefaultVersion, branch)
+	return disallowedVer.ReplaceAllString(res, "~")
 }
 
 // definePackageVersionForBranch returns valid Debian package version for branch.
