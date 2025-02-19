@@ -9,8 +9,9 @@ on:
       - synchronize
   push:
     branches:
-      - main
       - ferretdb
+    tags:
+      - "*"
   schedule:
     - cron: "12 0 * * *"
 
