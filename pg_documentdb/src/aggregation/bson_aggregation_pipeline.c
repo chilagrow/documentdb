@@ -107,66 +107,9 @@ typedef bool (*CanInlineLookupStage)(const bson_value_t *stageValue, const
 
 
 /*
- * Enums to represent all kind of aggregations stages.
- * Please keep the list sorted within their groups for easier readability
- */
-typedef enum
-{
-	Stage_Invalid = 0,
-
-	/* Start internal stages Mongo */
-	Stage_Internal_InhibitOptimization = 1,
-
-	/* Start Mongo Public stages */
-	Stage_AddFields = 10,
-	Stage_Bucket,
-	Stage_BucketAuto,
-	Stage_ChangeStream,
-	Stage_CollStats,
-	Stage_Count,
-	Stage_CurrentOp,
-	Stage_Densify,
-	Stage_Documents,
-	Stage_Facet,
-	Stage_Fill,
-	Stage_GeoNear,
-	Stage_GraphLookup,
-	Stage_Group,
-	Stage_IndexStats,
-	Stage_Limit,
-	Stage_ListLocalSessions,
-	Stage_ListSessions,
-	Stage_Lookup,
-	Stage_Match,
-	Stage_Merge,
-	Stage_Out,
-	Stage_Project,
-	Stage_Redact,
-	Stage_ReplaceRoot,
-	Stage_ReplaceWith,
-	Stage_Sample,
-	Stage_Search,
-	Stage_SearchMeta,
-	Stage_Set,
-	Stage_SetWindowFields,
-	Stage_Skip,
-	Stage_Sort,
-	Stage_SortByCount,
-	Stage_UnionWith,
-	Stage_Unset,
-	Stage_Unwind,
-	Stage_VectorSearch,
-
-	/* Start of pg_documentdb Custom or internal stages */
-	Stage_InverseMatch = 100,
-	Stage_LookupUnwind
-} Stage;
-
-
-/*
  * Declaration of a given aggregation pipeline stage.
  */
-typedef struct
+typedef struct AggregationStageDefinition
 {
 	/* The stage name in Mongo format (e.g. $addFields, $project) */
 	const char *stage;
@@ -203,15 +146,6 @@ typedef struct
 
 	Stage stageEnum;
 } AggregationStageDefinition;
-
-typedef struct
-{
-	/* The bson value of the pipeline spec */
-	bson_value_t stageValue;
-
-	/* Definition of internal handlers */
-	AggregationStageDefinition *stageDefinition;
-} AggregationStage;
 
 
 static void AddCursorFunctionsToQuery(Query *query, Query *baseQuery,
@@ -2551,6 +2485,22 @@ ValidateElementForNGroupAccumulators(bson_value_t *elementsToFetch, const
 
 
 /*
+ * Given valid aggregation pipeline stages, this function returns the stage enum at the given position.
+ */
+Stage
+GetAggregationStageAtPosition(const List *aggregationStages, int position)
+{
+	if (list_length(aggregationStages) <= position)
+	{
+		return Stage_Invalid;
+	}
+
+	AggregationStage *stage = list_nth(aggregationStages, position);
+	return stage->stageDefinition->stageEnum;
+}
+
+
+/*
  * Mutates the query for the $addFields stage
  */
 static Query *
@@ -4328,9 +4278,22 @@ HandleSort(const bson_value_t *existingValue, Query *query,
 			bool isAscending = ValidateOrderbyExpressionAndGetIsAscending(sortDoc);
 			SortByNulls sortByNulls = SORTBY_NULLS_DEFAULT;
 
+			bool hasSortById = strcmp(element.path, "_id") == 0;
+			bool canPushdownSortById = false;
+
+			if (hasSortById)
+			{
+				ReportFeatureUsage(FEATURE_STAGE_SORT_BY_ID);
+
+				if (CanSortByObjectId(query, context))
+				{
+					canPushdownSortById = true;
+					ReportFeatureUsage(FEATURE_STAGE_SORT_BY_ID_PUSHDOWNABLE);
+				}
+			}
+
 			/* If the sort is on _id and we can push it down to the primary key index, use ORDER BY object_id instead. */
-			if (EnableSortbyIdPushDownToPrimaryKey && strcmp(element.path, "_id") == 0 &&
-				CanSortByObjectId(query, context))
+			if (EnableSortbyIdPushDownToPrimaryKey && canPushdownSortById)
 			{
 				expr = (Expr *) makeVar(1,
 										DOCUMENT_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER,
@@ -6024,6 +5987,12 @@ List *
 ExtractAggregationStages(const bson_value_t *pipelineValue,
 						 AggregationPipelineBuildContext *context)
 {
+	if (pipelineValue->value_type != BSON_TYPE_ARRAY ||
+		IsBsonValueEmptyArray(pipelineValue))
+	{
+		return NIL;
+	}
+
 	bson_iter_t pipelineIterator;
 	BsonValueInitIterator(pipelineValue, &pipelineIterator);
 
