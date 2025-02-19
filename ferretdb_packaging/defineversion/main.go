@@ -44,12 +44,12 @@ func main() {
 
 	debugEnv(action)
 
-	upstreamVersion, err := definePackageVersion(controlDefaultVersion, action.Getenv)
+	packageVersion, err := definePackageVersion(controlDefaultVersion, action.Getenv)
 	if err != nil {
 		action.Fatalf("%s", err)
 	}
 
-	setResults(action, upstreamVersion)
+	setResults(action, packageVersion)
 }
 
 // controlDefaultVer matches major, minor and "patch" from default_version field in control file,
@@ -85,7 +85,7 @@ func debugEnv(action *githubactions.Action) {
 }
 
 // getControlDefaultVersion returns the default_version field from the control file
-// in SemVer fromat (0.100-0 -> 0.100.0).
+// in SemVer format (0.100-0 -> 0.100.0).
 func getControlDefaultVersion(f string) (string, error) {
 	b, err := os.ReadFile(f)
 	if err != nil {
@@ -104,30 +104,30 @@ func getControlDefaultVersion(f string) (string, error) {
 	return fmt.Sprintf("%s.%s.%s", major, minor, patch), nil
 }
 
-// definePackage version returns valid Debian package version,
+// definePackageVersion returns valid Debian package version,
 // based on `default_version` in the control file and environment variables set by GitHub Actions.
 //
 // See https://www.debian.org/doc/debian-policy/ch-controlfields.html#version.
 // We use `upstream_version` only.
 // For that reason, we can't use `-`, so we replace it with `~`.
 func definePackageVersion(controlDefaultVersion string, getenv githubactions.GetenvFunc) (string, error) {
-	var upstreamVersion string
+	var packageVersion string
 	var err error
 
 	switch event := getenv("GITHUB_EVENT_NAME"); event {
 	case "pull_request", "pull_request_target":
 		branch := strings.ToLower(getenv("GITHUB_HEAD_REF"))
-		upstreamVersion = definePackageVersionForPR(controlDefaultVersion, branch)
+		packageVersion = definePackageVersionForPR(controlDefaultVersion, branch)
 
 	case "push", "schedule", "workflow_run":
 		refName := strings.ToLower(getenv("GITHUB_REF_NAME"))
 
 		switch refType := strings.ToLower(getenv("GITHUB_REF_TYPE")); refType {
 		case "branch":
-			upstreamVersion, err = definePackageVersionForBranch(controlDefaultVersion, refName)
+			packageVersion, err = definePackageVersionForBranch(controlDefaultVersion, refName)
 
 		case "tag":
-			upstreamVersion, err = definePackagerVersionForTag(refName)
+			packageVersion, err = definePackagerVersionForTag(refName)
 
 		default:
 			err = fmt.Errorf("unhandled ref type %q for event %q", refType, event)
@@ -141,14 +141,14 @@ func definePackageVersion(controlDefaultVersion string, getenv githubactions.Get
 		return "", err
 	}
 
-	if upstreamVersion == "" {
-		return "", fmt.Errorf("both upstreamVersion and err are nil")
+	if packageVersion == "" {
+		return "", fmt.Errorf("both packageVersion and err are nil")
 	}
 
-	return upstreamVersion, nil
+	return packageVersion, nil
 }
 
-// definePackageVersionForPR version returns valid Debian package version for PR.
+// definePackageVersionForPR returns valid Debian package version for PR.
 // See [definePackageVersion].
 func definePackageVersionForPR(controlDefaultVersion, branch string) string {
 	// for branches like "dependabot/submodules/XXX"
@@ -159,7 +159,7 @@ func definePackageVersionForPR(controlDefaultVersion, branch string) string {
 	return fmt.Sprintf("%s~pr~%s", controlDefaultVersion, branch)
 }
 
-// definePackageVersionForBranch version returns valid Debian package version for branch.
+// definePackageVersionForBranch returns valid Debian package version for branch.
 // See [definePackageVersion].
 func definePackageVersionForBranch(controlDefaultVersion, branch string) (string, error) {
 	switch branch {
@@ -170,7 +170,7 @@ func definePackageVersionForBranch(controlDefaultVersion, branch string) (string
 	}
 }
 
-// definePackagerVersionForTag version returns valid Debian package version for tag.
+// definePackagerVersionForTag returns valid Debian package version for tag.
 // See [definePackageVersion].
 func definePackagerVersionForTag(tag string) (string, error) {
 	match := semVerTag.FindStringSubmatch(tag)
@@ -187,6 +187,7 @@ func definePackagerVersionForTag(tag string) (string, error) {
 	if prerelease == "" {
 		return "", fmt.Errorf("prerelease is empty")
 	}
+
 	if !strings.Contains(prerelease, "ferretdb") {
 		return "", fmt.Errorf("prerelease %q should include `ferretdb`", prerelease)
 	}

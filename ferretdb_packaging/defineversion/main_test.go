@@ -46,23 +46,23 @@ func TestDefine(t *testing.T) {
 		"pull_request": {
 			env: map[string]string{
 				"GITHUB_EVENT_NAME": "pull_request",
-				"GITHUB_HEAD_REF":   "define-docker-tag",
+				"GITHUB_HEAD_REF":   "define-version",
 				"GITHUB_REF_NAME":   "1/merge",
 				"GITHUB_REF_TYPE":   "branch",
 			},
 			controlDefaultVersion: "0.100.0",
-			expected:              "0.100.0~pr~define~docker~tag",
+			expected:              "0.100.0~pr~define~version",
 		},
 
 		"pull_request_target": {
 			env: map[string]string{
 				"GITHUB_EVENT_NAME": "pull_request_target",
-				"GITHUB_HEAD_REF":   "define-docker-tag",
+				"GITHUB_HEAD_REF":   "define-version",
 				"GITHUB_REF_NAME":   "ferretdb",
 				"GITHUB_REF_TYPE":   "branch",
 			},
 			controlDefaultVersion: "0.100.0",
-			expected:              "0.100.0~pr~define~docker~tag",
+			expected:              "0.100.0~pr~define~version",
 		},
 
 		"push/ferretdb": {
@@ -123,7 +123,7 @@ func TestDefine(t *testing.T) {
 			env: map[string]string{
 				"GITHUB_EVENT_NAME": "push",
 				"GITHUB_HEAD_REF":   "",
-				"GITHUB_REF_NAME":   "0.100.0",
+				"GITHUB_REF_NAME":   "0.100.0-ferretdb",
 				"GITHUB_REF_TYPE":   "tag",
 			},
 		},
@@ -131,7 +131,7 @@ func TestDefine(t *testing.T) {
 			env: map[string]string{
 				"GITHUB_EVENT_NAME": "push",
 				"GITHUB_HEAD_REF":   "",
-				"GITHUB_REF_NAME":   "0.100-0",
+				"GITHUB_REF_NAME":   "v0.100-0-ferretdb",
 				"GITHUB_REF_TYPE":   "tag",
 			},
 		},
