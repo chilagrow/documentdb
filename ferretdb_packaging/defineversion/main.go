@@ -37,7 +37,7 @@ func main() {
 		action.Fatalf("%s", "-control-file flag is empty.")
 	}
 
-	controlDefaultVersion, err := readControlDefaultVersion(*controlFileF)
+	controlDefaultVersion, err := getControlDefaultVersion(*controlFileF)
 	if err != nil {
 		action.Fatalf("%s", err)
 	}
@@ -56,10 +56,9 @@ func main() {
 // see pg_documentdb_core/documentdb_core.control.
 var controlDefaultVer = regexp.MustCompile(`(?m)^default_version\s=\s'(?P<major>[0-9]+)\.(?P<minor>[0-9]+)-(?P<patch>[0-9]+)'$`)
 
-// tagVer is the syntax used by tags such as `v0.100.0`.
-// It may contain additional string such as `v0.100.0-ferretdb` and `v0.100.0-ferretdb-2.0.1`.
-//
-//nolint:lll // for readibility
+// tagVer matches major, manor, patch and rest of optional string.
+// The tag may look like `v0.100.0` and tag with optional string
+// may look like `v0.100.0-ferretdb` and `v0.100.0-ferretdb-2.0.1`.
 var tagVer = regexp.MustCompile(`^v(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)-?(?P<rest>[0-9a-zA-Z-.]+)?$`)
 
 // disallowedVer matches disallowed characters of upstream version,
@@ -86,10 +85,10 @@ func debugEnv(action *githubactions.Action) {
 	}
 }
 
-// readControlDefaultVersion reads the default_version field from the control file,
+// getControlDefaultVersion reads the default_version field from the control file,
 // and returns the control default version in SemVer format,
 // see pg_documentdb_core/documentdb_core.control.
-func readControlDefaultVersion(f string) (string, error) {
+func getControlDefaultVersion(f string) (string, error) {
 	b, err := os.ReadFile(f)
 	if err != nil {
 		return "", err
@@ -108,11 +107,11 @@ func readControlDefaultVersion(f string) (string, error) {
 }
 
 // define returns the upstream version using the environment variables of GitHub Actions.
-// The upstream version does not allow `-` character and replaced with `~`.
+// The characters not allowed in upstream version including `-` are replaced with `~`.
 //
-// For release tags, it uses the tag name as the upstream version.
-// For pull requests, branches and other GitHub Actions it uses
-// control default version for upstream version prefix as it must start with digit.
+// For release tags, it uses the normalized tag name as the upstream version.
+// Remaining GitHub Actions use control default version followed by normalized GitHub Actions reference.
+// The upstream version requires digit prefix hence control default version is used.
 //
 // See upstream version in https://www.debian.org/doc/debian-policy/ch-controlfields.html#version.
 func define(controlDefaultVersion string, getenv githubactions.GetenvFunc) (string, error) {
@@ -178,7 +177,7 @@ func defineForBranch(controlDefaultVersion, branch string) (string, error) {
 // extracting major, minor, patch.
 //
 // If the tag contains more information such as `v0.100.0-ferretdb-2.0.1`,
-// it replaces disallowed characters with `~` returning `0.100.0~ferretdb~2.0.1`.
+// it replaces special characters with `~` returning `0.100.0~ferretdb~2.0.1`.
 func defineForTag(tag string) (string, error) {
 	match := tagVer.FindStringSubmatch(tag)
 	if match == nil || len(match) != tagVer.NumSubexp()+1 {

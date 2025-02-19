@@ -232,7 +232,7 @@ requires = 'documentdb_core, pg_cron, tsm_system_rows, vector, postgis, rum'`
 	_, err = io.WriteString(controlF, buf)
 	require.NoError(t, err)
 
-	controlDefaultVersion, err := readControlDefaultVersion(controlF.Name())
+	controlDefaultVersion, err := getControlDefaultVersion(controlF.Name())
 	require.NoError(t, err)
 
 	require.Equal(t, "0.100.0", controlDefaultVersion)
