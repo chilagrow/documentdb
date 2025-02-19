@@ -44,9 +44,7 @@
 *.pdb
 
 # FerretDB packaging
-!*go.mod
 *.deb
-/bin
 
 # Kernel Module Compile Results
 *.mod*
