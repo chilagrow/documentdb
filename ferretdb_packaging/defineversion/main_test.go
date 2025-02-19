@@ -73,7 +73,7 @@ func TestDefine(t *testing.T) {
 				"GITHUB_REF_TYPE":   "branch",
 			},
 			controlDefaultVersion: "0.100.0",
-			expected:              "0.100.0~ferretdb",
+			expected:              "0.100.0~branch~ferretdb",
 		},
 		"push/other": {
 			env: map[string]string{
@@ -151,7 +151,7 @@ func TestDefine(t *testing.T) {
 				"GITHUB_REF_TYPE":   "branch",
 			},
 			controlDefaultVersion: "0.100.0",
-			expected:              "0.100.0~ferretdb",
+			expected:              "0.100.0~branch~ferretdb",
 		},
 
 		"workflow_run": {
@@ -162,7 +162,7 @@ func TestDefine(t *testing.T) {
 				"GITHUB_REF_TYPE":   "branch",
 			},
 			controlDefaultVersion: "0.100.0",
-			expected:              "0.100.0~ferretdb",
+			expected:              "0.100.0~branch~ferretdb",
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
