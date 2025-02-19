@@ -39,9 +39,9 @@ func getEnvFunc(t *testing.T, env map[string]string) func(string) string {
 
 func TestDefine(t *testing.T) {
 	for name, tc := range map[string]struct {
-		env            map[string]string
-		defaultVersion string // pg_documentdb/documentdb.control file's default_version field
-		expected       string
+		env                   map[string]string
+		controlDefaultVersion string // pg_documentdb/documentdb.control file's default_version field
+		expected              string
 	}{
 		"pull_request": {
 			env: map[string]string{
@@ -50,19 +50,8 @@ func TestDefine(t *testing.T) {
 				"GITHUB_REF_NAME":   "1/merge",
 				"GITHUB_REF_TYPE":   "branch",
 			},
-			defaultVersion: "0.100-0",
-			expected:       "0.100.0~pr~define~docker~tag",
-		},
-
-		"pull_request/dependabot": {
-			env: map[string]string{
-				"GITHUB_EVENT_NAME": "pull_request",
-				"GITHUB_HEAD_REF":   "dependabot/submodules/tests/mongo-go-driver-29d768e",
-				"GITHUB_REF_NAME":   "58/merge",
-				"GITHUB_REF_TYPE":   "branch",
-			},
-			defaultVersion: "0.100-0",
-			expected:       "0.100.0~pr~mongo~go~driver~29d768e",
+			controlDefaultVersion: "0.100.0",
+			expected:              "0.100.0~pr~define~docker~tag",
 		},
 
 		"pull_request_target": {
@@ -72,20 +61,10 @@ func TestDefine(t *testing.T) {
 				"GITHUB_REF_NAME":   "main",
 				"GITHUB_REF_TYPE":   "branch",
 			},
-			defaultVersion: "0.100-0",
-			expected:       "0.100.0~pr~define~docker~tag",
+			controlDefaultVersion: "0.100.0",
+			expected:              "0.100.0~pr~define~docker~tag",
 		},
 
-		"push/main": {
-			env: map[string]string{
-				"GITHUB_EVENT_NAME": "push",
-				"GITHUB_HEAD_REF":   "",
-				"GITHUB_REF_NAME":   "main",
-				"GITHUB_REF_TYPE":   "branch",
-			},
-			defaultVersion: "0.100-0",
-			expected:       "0.100.0~main",
-		},
 		"push/ferretdb": {
 			env: map[string]string{
 				"GITHUB_EVENT_NAME": "push",
@@ -93,64 +72,73 @@ func TestDefine(t *testing.T) {
 				"GITHUB_REF_NAME":   "ferretdb",
 				"GITHUB_REF_TYPE":   "branch",
 			},
-			defaultVersion: "0.100-0",
-			expected:       "0.100.0~ferretdb",
+			controlDefaultVersion: "0.100.0",
+			expected:              "0.100.0~ferretdb",
 		},
 		"push/other": {
 			env: map[string]string{
 				"GITHUB_EVENT_NAME": "push",
 				"GITHUB_HEAD_REF":   "",
 				"GITHUB_REF_NAME":   "releases",
-				"GITHUB_REF_TYPE":   "other", // not main or ferretdb branch
+				"GITHUB_REF_TYPE":   "other", // not ferretdb branch
 			},
 		},
 
-		"push/tag/release1": {
+		"push/tag/v0.100.0": {
 			env: map[string]string{
 				"GITHUB_EVENT_NAME": "push",
 				"GITHUB_HEAD_REF":   "",
-				"GITHUB_REF_NAME":   "v0.100-0",
+				"GITHUB_REF_NAME":   "v0.100.0",
 				"GITHUB_REF_TYPE":   "tag",
 			},
-			defaultVersion: "0.100-0",
-			expected:       "0.100.0",
+			controlDefaultVersion: "0.100.0",
+			expected:              "0.100.0",
 		},
-		"push/tag/ferretdb": {
+		"push/tag/v0.100.0-ferretdb": {
 			env: map[string]string{
 				"GITHUB_EVENT_NAME": "push",
 				"GITHUB_HEAD_REF":   "",
 				"GITHUB_REF_NAME":   "v0.100.0-ferretdb",
 				"GITHUB_REF_TYPE":   "tag",
 			},
-			defaultVersion: "0.100-0",
-			expected:       "0.100.0~ferretdb",
+			controlDefaultVersion: "0.100.0",
+			expected:              "0.100.0~ferretdb",
 		},
-		"push/tag/ferretdb-specific-version": {
+		"push/tag/v0.100.0-ferretdb-2.0.1": {
 			env: map[string]string{
 				"GITHUB_EVENT_NAME": "push",
 				"GITHUB_HEAD_REF":   "",
 				"GITHUB_REF_NAME":   "v0.100.0-ferretdb-2.0.1",
 				"GITHUB_REF_TYPE":   "tag",
 			},
-			defaultVersion: "0.100-0",
-			expected:       "0.100.0~ferretdb~2.0.1",
+			controlDefaultVersion: "0.100.0",
+			expected:              "0.100.0~ferretdb~2.0.1",
 		},
 
 		"push/tag/mismatch": {
 			env: map[string]string{
 				"GITHUB_EVENT_NAME": "push",
 				"GITHUB_HEAD_REF":   "",
-				"GITHUB_REF_NAME":   "v0.100-1", // default version and tag mismatch
+				"GITHUB_REF_NAME":   "v0.101.1", // different control default version is ok
 				"GITHUB_REF_TYPE":   "tag",
 			},
-			defaultVersion: "0.100-0",
+			controlDefaultVersion: "0.101.0",
+			expected:              "0.101.1",
 		},
 
-		"push/tag/wrong": {
+		"push/tag/missing-v": {
 			env: map[string]string{
 				"GITHUB_EVENT_NAME": "push",
 				"GITHUB_HEAD_REF":   "",
-				"GITHUB_REF_NAME":   "0.100-0", // no leading v
+				"GITHUB_REF_NAME":   "0.100.0",
+				"GITHUB_REF_TYPE":   "tag",
+			},
+		},
+		"push/tag/not-semvar": {
+			env: map[string]string{
+				"GITHUB_EVENT_NAME": "push",
+				"GITHUB_HEAD_REF":   "",
+				"GITHUB_REF_NAME":   "0.100-0",
 				"GITHUB_REF_TYPE":   "tag",
 			},
 		},
@@ -159,26 +147,26 @@ func TestDefine(t *testing.T) {
 			env: map[string]string{
 				"GITHUB_EVENT_NAME": "schedule",
 				"GITHUB_HEAD_REF":   "",
-				"GITHUB_REF_NAME":   "main",
+				"GITHUB_REF_NAME":   "ferretdb",
 				"GITHUB_REF_TYPE":   "branch",
 			},
-			defaultVersion: "0.100-0",
-			expected:       "0.100.0~main",
+			controlDefaultVersion: "0.100.0",
+			expected:              "0.100.0~ferretdb",
 		},
 
 		"workflow_run": {
 			env: map[string]string{
 				"GITHUB_EVENT_NAME": "workflow_run",
 				"GITHUB_HEAD_REF":   "",
-				"GITHUB_REF_NAME":   "main",
+				"GITHUB_REF_NAME":   "ferretdb",
 				"GITHUB_REF_TYPE":   "branch",
 			},
-			defaultVersion: "0.100-0",
-			expected:       "0.100.0~main",
+			controlDefaultVersion: "0.100.0",
+			expected:              "0.100.0~ferretdb",
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			actual, err := define(tc.defaultVersion, getEnvFunc(t, tc.env))
+			actual, err := define(tc.controlDefaultVersion, getEnvFunc(t, tc.env))
 			if tc.expected == "" {
 				require.Error(t, err)
 				return
@@ -229,7 +217,7 @@ _GitHubActionsFileCommandDelimeter_
 	assert.Equal(t, expectedOutput, string(b), "output parameters does not match")
 }
 
-func TestControlVersion(t *testing.T) {
+func TestReadControlDefaultVersion(t *testing.T) {
 	dir := t.TempDir()
 
 	controlF, err := os.CreateTemp(dir, "test.control")
@@ -244,8 +232,8 @@ requires = 'documentdb_core, pg_cron, tsm_system_rows, vector, postgis, rum'`
 	_, err = io.WriteString(controlF, buf)
 	require.NoError(t, err)
 
-	version, err := controlVersion(controlF.Name())
+	controlDefaultVersion, err := readControlDefaultVersion(controlF.Name())
 	require.NoError(t, err)
 
-	require.Equal(t, "0.100-0", version)
+	require.Equal(t, "0.100.0", controlDefaultVersion)
 }

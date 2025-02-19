@@ -16,6 +16,7 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"os"
@@ -37,34 +38,30 @@ func main() {
 		action.Fatalf("%s", "-control-file flag is empty.")
 	}
 
-	version, err := controlVersion(*controlFileF)
+	controlDefaultVersion, err := readControlDefaultVersion(*controlFileF)
 	if err != nil {
 		action.Fatalf("%s", err)
 	}
 
 	debugEnv(action)
 
-	res, err := define(version, action.Getenv)
+	upstreamVersion, err := define(controlDefaultVersion, action.Getenv)
 	if err != nil {
 		action.Fatalf("%s", err)
 	}
 
-	setResults(action, res)
+	setResults(action, upstreamVersion)
 }
 
-// controlDefaultVer matches the default_version field in control file,
+// controlDefaultVer matches major, minor and patch from default_version field in control file,
 // see pg_documentdb_core/documentdb_core.control.
-var controlDefaultVer = regexp.MustCompile(`default_version\s*=\s*'([0-9]+\.[0-9]+-[0-9]+)'`)
+var controlDefaultVer = regexp.MustCompile(`^default_version\s=\s'(?P<major>[0-9]+)\.(?P<minor>[0-9]+)-(?P<patch>[0-9]+)'$`)
 
-// documentDBVer is the version syntax used by documentdb and tagging releases.
-// For documentdb.control file, the version is in the format of `0.100-0`.
-// For release tags, it has a leading `v` such as `v0.100-0`
-// It accepts documentdb format version like `0.100-0` and SemVer format version like `0.100.0`.
-// It may contain specific target such as `v0.100.0-ferretdb`,
-// and may specify specific target SemVer such as `v0.100.0-ferretdb-2.0.1`.
+// tagVer is the syntax used by tags such as `v0.100.0`.
+// It may contain additional string such as `v0.100.0-ferretdb` and `v0.100.0-ferretdb-2.0.1`.
 //
 //nolint:lll // for readibility
-var documentDBVer = regexp.MustCompile(`^v?(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)[-\.](?P<patch>0|[1-9]\d*)-?(?P<target>[0-9a-zA-Z]+)?-?(?P<targetSemVer>(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*))?$`)
+var tagVer = regexp.MustCompile(`^v(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)-?(?P<rest>[0-9a-zA-Z-.]+)?$`)
 
 // disallowedVer matches disallowed characters of upstream version,
 // see https://www.debian.org/doc/debian-policy/ch-controlfields.html#version.
@@ -90,54 +87,65 @@ func debugEnv(action *githubactions.Action) {
 	}
 }
 
-// controlVersion returns the default_version field from the control file,
+// readControlDefaultVersion reads the default_version field from the control file,
+// and returns the control default version in SemVer format,
 // see pg_documentdb_core/documentdb_core.control.
-func controlVersion(f string) (string, error) {
-	b, err := os.ReadFile(f)
+func readControlDefaultVersion(f string) (string, error) {
+	file, err := os.Open(f)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to read control file: %w", err)
 	}
 
-	match := controlDefaultVer.FindSubmatch(b)
-	if len(match) != 2 {
-		return "", fmt.Errorf("control file did not find default_version: %s", f)
+	defer file.Close()
+
+	r := bufio.NewReader(file)
+
+	for {
+		var line []byte
+		line, _, err = r.ReadLine()
+		if err != nil {
+			return "", fmt.Errorf("control file did not find default_version: %w", err)
+		}
+
+		match := controlDefaultVer.FindSubmatch(line)
+		if match == nil || len(match) != controlDefaultVer.NumSubexp()+1 {
+			continue
+		}
+
+		major := match[tagVer.SubexpIndex("major")]
+		minor := match[tagVer.SubexpIndex("minor")]
+		patch := match[tagVer.SubexpIndex("patch")]
+
+		return fmt.Sprintf("%s.%s.%s", major, minor, patch), nil
 	}
-
-	version := string(match[1])
-
-	return version, nil
 }
 
-// define returns the upstream version for debian package using
-// the environment variables of GitHub Actions.
-// If the release tag is set, it checks the tag matches the control version
-// and returns an error on mismatch.
-//
+// define returns the upstream version using the environment variables of GitHub Actions.
 // The upstream version does not allow `-` character and replaced with `~`.
+//
+// For release tags, it uses the tag name as the upstream version.
+// For pull requests, branches and other GitHub Actions it uses
+// control default version for upstream version prefix as it must start with digit.
 //
 // See upstream version in https://www.debian.org/doc/debian-policy/ch-controlfields.html#version.
 func define(controlDefaultVersion string, getenv githubactions.GetenvFunc) (string, error) {
-	version, err := parseVersion(controlDefaultVersion)
-	if err != nil {
-		return "", err
-	}
-
 	var upstreamVersion string
+	var err error
 
 	switch event := getenv("GITHUB_EVENT_NAME"); event {
 	case "pull_request", "pull_request_target":
 		branch := strings.ToLower(getenv("GITHUB_HEAD_REF"))
-		upstreamVersion = defineForPR(version, branch)
+		upstreamVersion = defineForPR(controlDefaultVersion, branch)
 
 	case "push", "schedule", "workflow_run":
 		refName := strings.ToLower(getenv("GITHUB_REF_NAME"))
 
 		switch refType := strings.ToLower(getenv("GITHUB_REF_TYPE")); refType {
 		case "branch":
-			upstreamVersion, err = defineForBranch(version, refName)
+			upstreamVersion, err = defineForBranch(controlDefaultVersion, refName)
 
 		case "tag":
-			upstreamVersion, err = defineForTag(version, refName)
+			upstreamVersion, err = defineForTag(refName)
 
 		default:
 			err = fmt.Errorf("unhandled ref type %q for event %q", refType, event)
@@ -152,7 +160,7 @@ func define(controlDefaultVersion string, getenv githubactions.GetenvFunc) (stri
 	}
 
 	if upstreamVersion == "" {
-		panic("both upstreamVersion and err are nil")
+		return "", fmt.Errorf("both upstreamVersion and err are nil")
 	}
 
 	return upstreamVersion, nil
@@ -160,69 +168,50 @@ func define(controlDefaultVersion string, getenv githubactions.GetenvFunc) (stri
 
 // defineForPR defines debian upstream version for pull requests.
 // It replaces special characters in branch name with character `~`.
-func defineForPR(controlVersion, branch string) string {
+func defineForPR(controlDefaultVersion, branch string) string {
 	// for branches like "dependabot/submodules/XXX"
 	parts := strings.Split(branch, "/")
 	branch = parts[len(parts)-1]
 	branch = disallowedVer.ReplaceAllString(branch, "~")
 
-	return fmt.Sprintf("%s~pr~%s", controlVersion, branch)
+	return fmt.Sprintf("%s~pr~%s", controlDefaultVersion, branch)
 }
 
 // defineForBranch defines debian upstream version for branches.
-func defineForBranch(version, branch string) (string, error) {
+func defineForBranch(controlDefaultVersion, branch string) (string, error) {
 	switch branch {
-	case "main", "ferretdb":
-		return fmt.Sprintf("%s~%s", version, branch), nil
+	case "ferretdb":
+		return fmt.Sprintf("%s~%s", controlDefaultVersion, branch), nil
 	default:
 		return "", fmt.Errorf("unhandled branch %q", branch)
 	}
 }
 
-// defineForTag defines debian upstream version for release builds.
-// It returns an error if tag does not contain default version.
-func defineForTag(defaultVersion string, tag string) (string, error) {
-	tagVersion, err := parseVersion(tag)
-	if err != nil {
-		return "", err
-	}
-
-	if !strings.HasPrefix(tagVersion, defaultVersion) {
-		return "", fmt.Errorf("release tag %s does not match control file default version %s", tagVersion, defaultVersion)
-	}
-
-	return tagVersion, nil
-}
-
-// parseVersion parses the version string and returns valid debian upstream version.
+// defineForTag defines debian upstream version for release builds by
+// extracting major, minor, patch.
 //
-// If version contains specific target such as `v0.100.0-ferretdb`,
-// `0.100.0~ferretdb` is returned with `~` replacing not permitted `-`.
-// If target contains specific version such as `v0.100.0-ferretdb-2.0.1`,
-// it returns `0.100.0~ferretdb~2.0.1`.
-func parseVersion(version string) (string, error) {
-	match := documentDBVer.FindStringSubmatch(version)
-	if match == nil || len(match) != documentDBVer.NumSubexp()+1 {
-		return "", fmt.Errorf("unexpected version syntax %q", version)
+// If the tag contains more information such as `v0.100.0-ferretdb-2.0.1`,
+// it replaces disallowed characters with `~` returning `0.100.0~ferretdb~2.0.1`.
+func defineForTag(tag string) (string, error) {
+	match := tagVer.FindStringSubmatch(tag)
+	if match == nil || len(match) != tagVer.NumSubexp()+1 {
+		return "", fmt.Errorf("unexpected tag syntax %q", tag)
 	}
 
-	major := match[documentDBVer.SubexpIndex("major")]
-	minor := match[documentDBVer.SubexpIndex("minor")]
-	patch := match[documentDBVer.SubexpIndex("patch")]
+	major := match[tagVer.SubexpIndex("major")]
+	minor := match[tagVer.SubexpIndex("minor")]
+	patch := match[tagVer.SubexpIndex("patch")]
 
 	semVer := fmt.Sprintf("%s.%s.%s", major, minor, patch)
 
-	target := match[documentDBVer.SubexpIndex("target")]
-	if target == "" {
+	rest := match[tagVer.SubexpIndex("rest")]
+	if rest == "" {
 		return semVer, nil
 	}
 
-	targetSemVer := match[documentDBVer.SubexpIndex("targetSemVer")]
-	if targetSemVer == "" {
-		return fmt.Sprintf("%s~%s", semVer, target), nil
-	}
+	rest = disallowedVer.ReplaceAllString(rest, "~")
 
-	return fmt.Sprintf("%s~%s~%s", semVer, target, targetSemVer), nil
+	return fmt.Sprintf("%s~%s", semVer, rest), nil
 }
 
 // setResults sets action output parameters, summary, etc.
