@@ -138,7 +138,7 @@ if [[ $TEST_CLEAN_INSTALL == true ]]; then
     echo "Testing clean installation in a Docker container..."
 
     # Get most recently built debian package for the $PG version
-    deb_package_name=$(ls -t $abs_output_dir | grep -E "postgresql-$PG-documentdb.*\.deb" | grep -v "dbg" | head -n 1)
+    deb_package_name=$(ls -t $abs_output_dir | grep -E "postgresql-$PG-documentdb._${DOCUMENTDB_VERSION}_amd64.deb" | grep -v "dbg" | head -n 1)
     deb_package_rel_path="$OUTPUT_DIR/$deb_package_name"
 
     echo "Debian package path: $deb_package_rel_path"
