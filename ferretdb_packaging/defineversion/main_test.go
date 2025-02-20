@@ -40,29 +40,29 @@ func getEnvFunc(t *testing.T, env map[string]string) func(string) string {
 func TestDefine(t *testing.T) {
 	for name, tc := range map[string]struct {
 		env                   map[string]string
-		controlDefaultVersion string // pg_documentdb/documentdb.control file's default_version field
+		controlDefaultVersion string
 		expected              string
 	}{
 		"pull_request": {
 			env: map[string]string{
 				"GITHUB_EVENT_NAME": "pull_request",
-				"GITHUB_HEAD_REF":   "define-docker-tag",
+				"GITHUB_HEAD_REF":   "define-version",
 				"GITHUB_REF_NAME":   "1/merge",
 				"GITHUB_REF_TYPE":   "branch",
 			},
 			controlDefaultVersion: "0.100.0",
-			expected:              "0.100.0~pr~define~docker~tag",
+			expected:              "0.100.0~pr~define~version",
 		},
 
 		"pull_request_target": {
 			env: map[string]string{
 				"GITHUB_EVENT_NAME": "pull_request_target",
-				"GITHUB_HEAD_REF":   "define-docker-tag",
+				"GITHUB_HEAD_REF":   "define-version",
 				"GITHUB_REF_NAME":   "ferretdb",
 				"GITHUB_REF_TYPE":   "branch",
 			},
 			controlDefaultVersion: "0.100.0",
-			expected:              "0.100.0~pr~define~docker~tag",
+			expected:              "0.100.0~pr~define~version",
 		},
 
 		"push/ferretdb": {
@@ -84,16 +84,6 @@ func TestDefine(t *testing.T) {
 			},
 		},
 
-		"push/tag/v0.100.0": {
-			env: map[string]string{
-				"GITHUB_EVENT_NAME": "push",
-				"GITHUB_HEAD_REF":   "",
-				"GITHUB_REF_NAME":   "v0.100.0",
-				"GITHUB_REF_TYPE":   "tag",
-			},
-			controlDefaultVersion: "0.100.0",
-			expected:              "0.100.0",
-		},
 		"push/tag/v0.100.0-ferretdb": {
 			env: map[string]string{
 				"GITHUB_EVENT_NAME": "push",
@@ -101,8 +91,7 @@ func TestDefine(t *testing.T) {
 				"GITHUB_REF_NAME":   "v0.100.0-ferretdb",
 				"GITHUB_REF_TYPE":   "tag",
 			},
-			controlDefaultVersion: "0.100.0",
-			expected:              "0.100.0~ferretdb",
+			expected: "0.100.0~ferretdb",
 		},
 		"push/tag/v0.100.0-ferretdb-2.0.1": {
 			env: map[string]string{
@@ -111,26 +100,30 @@ func TestDefine(t *testing.T) {
 				"GITHUB_REF_NAME":   "v0.100.0-ferretdb-2.0.1",
 				"GITHUB_REF_TYPE":   "tag",
 			},
-			controlDefaultVersion: "0.100.0",
-			expected:              "0.100.0~ferretdb~2.0.1",
+			expected: "0.100.0~ferretdb~2.0.1",
 		},
 
-		"push/tag/mismatch": {
+		"push/tag/missing-prerelease": {
 			env: map[string]string{
 				"GITHUB_EVENT_NAME": "push",
 				"GITHUB_HEAD_REF":   "",
-				"GITHUB_REF_NAME":   "v0.101.1", // different control default version is ok
+				"GITHUB_REF_NAME":   "v0.100.0", // missing prerelease
 				"GITHUB_REF_TYPE":   "tag",
 			},
-			controlDefaultVersion: "0.101.0",
-			expected:              "0.101.1",
 		},
-
+		"push/tag/not-ferretdb-prerelease": {
+			env: map[string]string{
+				"GITHUB_EVENT_NAME": "push",
+				"GITHUB_HEAD_REF":   "",
+				"GITHUB_REF_NAME":   "v0.100.0-other", // missing ferretdb in prerelease
+				"GITHUB_REF_TYPE":   "tag",
+			},
+		},
 		"push/tag/missing-v": {
 			env: map[string]string{
 				"GITHUB_EVENT_NAME": "push",
 				"GITHUB_HEAD_REF":   "",
-				"GITHUB_REF_NAME":   "0.100.0",
+				"GITHUB_REF_NAME":   "0.100.0-ferretdb",
 				"GITHUB_REF_TYPE":   "tag",
 			},
 		},
@@ -138,7 +131,7 @@ func TestDefine(t *testing.T) {
 			env: map[string]string{
 				"GITHUB_EVENT_NAME": "push",
 				"GITHUB_HEAD_REF":   "",
-				"GITHUB_REF_NAME":   "0.100-0",
+				"GITHUB_REF_NAME":   "v0.100-0-ferretdb",
 				"GITHUB_REF_TYPE":   "tag",
 			},
 		},
@@ -166,7 +159,7 @@ func TestDefine(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			actual, err := define(tc.controlDefaultVersion, getEnvFunc(t, tc.env))
+			actual, err := definePackageVersion(tc.controlDefaultVersion, getEnvFunc(t, tc.env))
 			if tc.expected == "" {
 				require.Error(t, err)
 				return
