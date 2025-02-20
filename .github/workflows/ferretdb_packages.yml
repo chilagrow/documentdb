@@ -33,14 +33,9 @@ jobs:
   build:
     name: Build .debs (${{ matrix.os }}, Pg${{ matrix.pg }})
 
-    # CI cannot find ubicloud-standard-4 runner and displays the following message:
-    # `Waiting for a runner to pick up this job...`
-    #
     # https://www.ubicloud.com/docs/about/pricing#github-actions
     # https://docs.github.com/en/billing/managing-billing-for-github-actions/about-billing-for-github-actions#per-minute-rates-for-larger-runners
-    # runs-on: ubicloud-standard-4
-
-    runs-on: ubuntu-24.04
+    runs-on: ubicloud-standard-4
 
     timeout-minutes: 40
 
@@ -64,8 +59,8 @@ jobs:
       - name: Setup Go
         uses: FerretDB/github-actions/setup-go@main
 
-      - name: Define package tag version
-        id: tag
+      - name: Define Debian package version
+        id: version
         run: |
           cd ferretdb_packaging
           go mod tidy
@@ -73,9 +68,9 @@ jobs:
           go build -v -o=bin/ ./defineversion
           bin/defineversion --control-file ../pg_documentdb_core/documentdb_core.control
 
-      - name: Build ${{ steps.tag.outputs.version }}
-        if: steps.tag.outputs.version != ''
-        run: ./ferretdb_packaging/build_packages.sh --os ${{ matrix.os }} --pg ${{ matrix.pg }} --version ${{ steps.tag.outputs.version }} --test-clean-install
+      - name: Build ${{ steps.version.outputs.version }}
+        if: steps.version.outputs.version != ''
+        run: ./ferretdb_packaging/build_packages.sh --os ${{ matrix.os }} --pg ${{ matrix.pg }} --version ${{ steps.version.outputs.version }} --test-clean-install
 
       - name: Upload
         uses: actions/upload-artifact@v4
