@@ -17,4 +17,4 @@
 1. Find [ferretdb_packages CI build](https://github.com/FerretDB/documentdb/actions/workflows/ferretdb_packages.yml?query=event%3Apush)
    for the tag to release.
 2. Upload `.deb` packages to the draft release.
-3. Publish release on [FerretDB/documentdb](https://github.com/FerretDB/documentdb).
+3. Publish release on GitHub.
