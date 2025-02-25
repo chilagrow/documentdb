@@ -137,7 +137,7 @@ echo "Packages built successfully!!"
 if [[ $TEST_CLEAN_INSTALL == true ]]; then
     echo "Testing clean installation in a Docker container..."
 
-    deb_package_name=$(ls $abs_output_dir | grep -E "${$OS_NAME}-postgresql-${PG}-documentdb_${DOCUMENTDB_VERSION}_amd64.deb" | grep -v "dbg" | head -n 1)
+    deb_package_name=$(ls $abs_output_dir | grep -E "${OS_NAME}-postgresql-${PG}-documentdb_${DOCUMENTDB_VERSION}_amd64.deb" | grep -v "dbg" | head -n 1)
     deb_package_rel_path="$OUTPUT_DIR/$deb_package_name"
 
     echo "Debian package path: $deb_package_rel_path"
