@@ -10,6 +10,9 @@ sed -i '/internal/d' Makefile
 # Build the Debian package
 debuild -us -uc
 
+# Rename .deb files to include the OS name prefix
+for f in ../*.deb; do mv $f $(echo $f | sed "s/\(.*\)\//\1\/$OS-/g"); done
+
 # Create the output directory if it doesn't exist
 mkdir -p /output
 
