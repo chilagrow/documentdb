@@ -112,6 +112,9 @@ case $OS in
         ;;
 esac
 
+# Replace `:` with `-` to make artifact name valid
+OS_NAME=$(echo "$DOCKER_IMAGE" | sed "s/:/-/")
+
 repo_root=$(git rev-parse --show-toplevel)
 abs_output_dir="$repo_root/$OUTPUT_DIR"
 cd $repo_root
@@ -127,14 +130,14 @@ docker build --platform linux/amd64 -t documentdb-build-packages:latest -f ferre
     --build-arg BASE_IMAGE=$DOCKER_IMAGE --build-arg POSTGRES_VERSION=$PG --build-arg DOCUMENTDB_VERSION=$DOCUMENTDB_VERSION .
 
 # Run the Docker container to build the packages
-docker run --platform linux/amd64 --rm --env OS=$DOCKER_IMAGE -v $abs_output_dir:/output documentdb-build-packages:latest
+docker run --platform linux/amd64 --rm --env OS=$OS_NAME -v $abs_output_dir:/output documentdb-build-packages:latest
 
 echo "Packages built successfully!!"
 
 if [[ $TEST_CLEAN_INSTALL == true ]]; then
     echo "Testing clean installation in a Docker container..."
 
-    deb_package_name=$(ls $abs_output_dir | grep -E "${DOCKER_IMAGE}-postgresql-${PG}-documentdb_${DOCUMENTDB_VERSION}_amd64.deb" | grep -v "dbg" | head -n 1)
+    deb_package_name=$(ls $abs_output_dir | grep -E "${$OS_NAME}-postgresql-${PG}-documentdb_${DOCUMENTDB_VERSION}_amd64.deb" | grep -v "dbg" | head -n 1)
     deb_package_rel_path="$OUTPUT_DIR/$deb_package_name"
 
     echo "Debian package path: $deb_package_rel_path"
