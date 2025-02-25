@@ -7,8 +7,6 @@ ARG DOCUMENTDB_VERSION
 
 RUN test -n "$DOCUMENTDB_VERSION" || (echo "DOCUMENTDB_VERSION not set" && false)
 
-ENV OS=$BASE_IMAGE
-
 RUN apt-get update
 
 RUN apt-get install -y --no-install-recommends \

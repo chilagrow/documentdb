@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+test -n "$OS" || (echo "OS not set" && false)
+
 # Change to the build directory
 cd /build
 
