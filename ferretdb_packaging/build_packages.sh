@@ -111,7 +111,7 @@ case $OS in
         OS_NAME="ubuntu-22.04"
         ;;
     ubuntu24.04)
-        DOCKER_IMAGE="ubuntu-24.04"
+        DOCKER_IMAGE="ubuntu:24.04"
         OS_NAME="ubuntu-24.04"
         ;;
 esac
