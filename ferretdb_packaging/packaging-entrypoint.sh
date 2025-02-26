@@ -16,7 +16,9 @@ debuild -us -uc
 cd /
 
 # Rename .deb files to include the OS name prefix
-for f in *.deb; do mv $f $(echo $f | sed "s/^/$OS-/"); done
+for f in *.deb; do
+   mv $f $OS-$f;
+done
 
 # Create the output directory if it doesn't exist
 mkdir -p /output
