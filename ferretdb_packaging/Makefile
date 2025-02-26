@@ -1,8 +1,6 @@
-#!/bin/bash
+.PHONY: docker-build docker-cleanup docker-documentdb docker-documentdb-development-push docker-documentdb-production-push docker-init
 
-set -euo pipefail
-
-docker-build() {
+docker-build:
 	test -n "$FILE"   || (echo "FILE not set" && false)
 	test -n "$TARGET" || (echo "TARGET not set" && false)
 	test -n "$OUTPUT" || (echo "OUTPUT not set" && false)
@@ -17,45 +15,40 @@ docker-build() {
         --tag=$(DOCKER_IMAGES) \
         --output=$(OUTPUT) \
         .
-}
 
-docker-cleanup() {
+docker-cleanup:
 	docker system df
 	docker buildx --builder=ferretdb du || true # ignore error
 	docker buildx --builder=ferretdb rm --force || true # ignore error
 	docker system prune --force
 	docker system df
-}
 
-docker-documentdb() {
-	test -n "$FILE" || (echo "FILE not set" && false)
+docker-documentdb:
+	test -n "$FILE"   || (echo "FILE not set" && false)
 	make docker-build \
         FILE=$(FILE) \
         TARGET=$(FILE) \
         PLATFORM=linux/amd64 \
         DOCKER_IMAGES=documentdb-local \
         OUTPUT="type=docker"
-}
 
-docker-documentdb-development-push() {
-	test -n "$DOCKER_IMAGES" || (echo "DOCKER_IMAGES not set" && false)
+docker-documentdb-development-push:
+	test -n "$DOCKER_IMAGES"   || (echo "DOCKER_IMAGES not set" && false)
 	make docker-build \
         FILE=development \
         TARGET=development \
         PLATFORM=linux/amd64 \
         OUTPUT="type=image,push=true"
-}
 
-docker-documentdb-production-push() {
+docker-documentdb-production-push:
 	test -n "$DOCKER_IMAGES"   || (echo "DOCKER_IMAGES not set" && false)
 	make docker-build \
         FILE=production \
         TARGET=production \
         PLATFORM=linux/amd64 \
         OUTPUT="type=image,push=true"
-}
 
-docker-init() {
+docker-init:
 	docker buildx create \
 		--driver=docker-container \
         --name=ferretdb \
@@ -66,6 +59,6 @@ docker-init() {
         --driver-opt env.JAEGER_TRACE=127.0.0.1:6831 \
         --driver-opt env.BUILDKIT_STEP_LOG_MAX_SIZE=-1 \
         --driver-opt env.BUILDKIT_STEP_LOG_MAX_SPEED=-1 \
-        || true # ignore error
+        ignore_error: true
 	docker buildx ls
-}
+
