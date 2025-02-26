@@ -24,7 +24,7 @@ docker-cleanup:
 	docker system df
 
 docker-documentdb:
-	test -n "$FILE"   || (echo "FILE not set" && false)
+	test -n "$FILE" || (echo "FILE not set" && false)
 	make docker-build \
         FILE=$(FILE) \
         TARGET=$(FILE) \
@@ -33,7 +33,7 @@ docker-documentdb:
         OUTPUT="type=docker"
 
 docker-documentdb-development-push:
-	test -n "$DOCKER_IMAGES"   || (echo "DOCKER_IMAGES not set" && false)
+	test -n "$DOCKER_IMAGES" || (echo "DOCKER_IMAGES not set" && false)
 	make docker-build \
         FILE=development \
         TARGET=development \
@@ -41,7 +41,7 @@ docker-documentdb-development-push:
         OUTPUT="type=image,push=true"
 
 docker-documentdb-production-push:
-	test -n "$DOCKER_IMAGES"   || (echo "DOCKER_IMAGES not set" && false)
+	test -n "$DOCKER_IMAGES" || (echo "DOCKER_IMAGES not set" && false)
 	make docker-build \
         FILE=production \
         TARGET=production \
@@ -54,11 +54,11 @@ docker-init:
         --name=ferretdb \
         --bootstrap=true \
         --use=false \
-        --config=./build/buildkitd.toml \
+        --config=./buildkitd.toml \
         --driver-opt network=host \
         --driver-opt env.JAEGER_TRACE=127.0.0.1:6831 \
         --driver-opt env.BUILDKIT_STEP_LOG_MAX_SIZE=-1 \
         --driver-opt env.BUILDKIT_STEP_LOG_MAX_SPEED=-1 \
-        ignore_error: true
+        || true # ignore error
 	docker buildx ls
 
