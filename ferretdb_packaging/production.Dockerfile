@@ -33,8 +33,8 @@ set -ex
 cd /src
 
 mkdir -p /tmp/install_setup
-cp ../scripts/* /tmp/install_setup/
-cp 10-preload.sh 20-install.sql /docker-entrypoint-initdb.d/
+cp scripts/* /tmp/install_setup/
+cp ferretdb_packaging/10-preload.sh ferretdb_packaging/20-install.sql /docker-entrypoint-initdb.d/
 
 export CLEANUP_SETUP=1
 export INSTALL_DEPENDENCIES_ROOT=/tmp/install_setup
@@ -43,7 +43,6 @@ env MAKE_PROGRAM=cmake /tmp/install_setup/install_setup_libbson.sh
 /tmp/install_setup/install_setup_pcre2.sh
 /tmp/install_setup/install_setup_intel_decimal_math_lib.sh
 
-cd ../
 make -k -j $(nproc)
 make install
 

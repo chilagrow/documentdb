@@ -6,8 +6,9 @@ docker-build:
 	test -n "$OUTPUT" || (echo "OUTPUT not set" && false)
 	test -n "$PLATFORM" || (echo "PLATFORM not set" && false)
 	test -n "$DOCKER_IMAGES" || (echo "DOCKER_IMAGES not set" && false)
+	cd ..; \
 	docker buildx build --builder=ferretdb \
-        --file=$(FILE).Dockerfile \
+        --file=ferretdb_packaging/$(FILE).Dockerfile \
         --build-arg=LABEL_VERSION={{.VERSION}} \
         --build-arg=LABEL_COMMIT={{.COMMIT}} \
         --target=$(TARGET) \
