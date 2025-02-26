@@ -1,11 +1,11 @@
 .PHONY: docker-build docker-cleanup docker-documentdb docker-documentdb-development-push docker-documentdb-production-push docker-init
 
 docker-build:
-	test -n "$FILE" || (echo "FILE not set" && false)
-	test -n "$TARGET" || (echo "TARGET not set" && false)
-	test -n "$OUTPUT" || (echo "OUTPUT not set" && false)
-	test -n "$PLATFORM" || (echo "PLATFORM not set" && false)
-	test -n "$TAGS" || (echo "TAGS not set" && exit 1)
+	test -n $(FILE) || (echo "FILE not set" && false)
+	test -n $(TARGET) || (echo "TARGET not set" && false)
+	test -n $(OUTPUT) || (echo "OUTPUT not set" && false)
+	test -n $(PLATFORM) || (echo "PLATFORM not set" && false)
+	test -n $(TAGS) && (echo "TAGS not set" && false)
 	cd ..; docker buildx build --builder=ferretdb \
         --file=ferretdb_packaging/$(FILE).Dockerfile \
         --build-arg=LABEL_VERSION={{.VERSION}} \
@@ -24,7 +24,7 @@ docker-cleanup:
 	docker system df
 
 docker-documentdb:
-	test -n "$FILE" || (echo "FILE not set" && false)
+	test -n $(FILE) || (echo "FILE not set" && false)
 	make docker-build \
         FILE=$(FILE) \
         TARGET=$(FILE) \
@@ -33,7 +33,7 @@ docker-documentdb:
         OUTPUT="type=docker"
 
 docker-documentdb-development-push:
-	test -n "$TAGS" || (echo "TAGS not set" && false); \
+	test -n $(TAGS) || (echo "TAGS not set" && false); \
 	make docker-build \
         FILE=development \
         TARGET=development \
@@ -41,7 +41,7 @@ docker-documentdb-development-push:
         OUTPUT="type=image,push=true"
 
 docker-documentdb-production-push:
-	test -n "$TAGS" || (echo "TAGS not set" && false)
+	test -n $(TAGS) || (echo "TAGS not set" && false)
 	make docker-build \
         FILE=production \
         TARGET=production \
