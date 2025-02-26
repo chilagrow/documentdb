@@ -95,25 +95,26 @@ if [[ -z "$DOCUMENTDB_VERSION" ]]; then
     exit 1
 fi
 
-
 # Set the appropriate Docker image based on the OS
+# and set the OS name prefix used for the artifacts
 case $OS in
     deb11)
         DOCKER_IMAGE="debian:bullseye"
+        OS_NAME="debian-bullseye"
         ;;
     deb12)
         DOCKER_IMAGE="debian:bookworm"
+        OS_NAME="debian-bookworm"
         ;;
     ubuntu22.04)
         DOCKER_IMAGE="ubuntu:22.04"
+        OS_NAME="ubuntu-22.04"
         ;;
     ubuntu24.04)
-        DOCKER_IMAGE="ubuntu:24.04"
+        DOCKER_IMAGE="ubuntu-24.04"
+        OS_NAME="ubuntu-24.04"
         ;;
 esac
-
-# Replace `:` with `-` to make artifact name valid
-OS_NAME=$(echo "$DOCKER_IMAGE" | sed "s/:/-/")
 
 repo_root=$(git rev-parse --show-toplevel)
 abs_output_dir="$repo_root/$OUTPUT_DIR"
