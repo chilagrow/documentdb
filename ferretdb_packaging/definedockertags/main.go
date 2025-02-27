@@ -18,13 +18,14 @@ package main
 import (
 	"flag"
 	"fmt"
-	"os"
 	"regexp"
 	"slices"
 	"strings"
 	"text/tabwriter"
 
 	"github.com/sethvargo/go-githubactions"
+
+	"github.com/FerretDB/documentdb/ferretdb_packaging/internal/githubaction"
 )
 
 func main() {
@@ -32,7 +33,7 @@ func main() {
 
 	action := githubactions.New()
 
-	debugEnv(action)
+	githubaction.DebugEnv(action)
 
 	res, err := define(action.Getenv)
 	if err != nil {
@@ -48,32 +49,8 @@ type result struct {
 	productionImages  []string
 }
 
-// semVerTag is a https://semver.org/#is-there-a-suggested-regular-expression-regex-to-check-a-semver-string,
-// but with a leading `v`.
-var semVerTag = regexp.MustCompile(`^v(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)(?:-(?P<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+(?P<buildmetadata>[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$`)
-
 // pgVer is the version of PostgreSQL with or without minor.
 var pgVer = regexp.MustCompile(`^(?P<major>0|[1-9]\d*)(?:\.(?P<minor>0|[1-9]\d*))?$`)
-
-// debugEnv logs all environment variables that start with `GITHUB_` or `INPUT_`
-// in debug level.
-func debugEnv(action *githubactions.Action) {
-	res := make([]string, 0, 30)
-
-	for _, l := range os.Environ() {
-		if strings.HasPrefix(l, "GITHUB_") || strings.HasPrefix(l, "INPUT_") {
-			res = append(res, l)
-		}
-	}
-
-	slices.Sort(res)
-
-	action.Debugf("Dumping environment variables:")
-
-	for _, l := range res {
-		action.Debugf("\t%s", l)
-	}
-}
 
 // define extracts Docker image names and tags from the environment variables defined by GitHub Actions.
 func define(getenv githubactions.GetenvFunc) (*result, error) {
@@ -103,27 +80,9 @@ func define(getenv githubactions.GetenvFunc) (*result, error) {
 			res, err = defineForBranch(owner, repo, refName)
 
 		case "tag":
-			match := semVerTag.FindStringSubmatch(refName)
-			if match == nil || len(match) != semVerTag.NumSubexp()+1 {
-				return nil, fmt.Errorf("unexpected git tag %q", refName)
-			}
-
-			major := match[semVerTag.SubexpIndex("major")]
-			minor := match[semVerTag.SubexpIndex("minor")]
-			patch := match[semVerTag.SubexpIndex("patch")]
-			prerelease := match[semVerTag.SubexpIndex("prerelease")]
-			buildmetadata := match[semVerTag.SubexpIndex("buildmetadata")]
-
-			if prerelease == "" {
-				return nil, fmt.Errorf("prerelease is empty")
-			}
-
-			if !strings.Contains(prerelease, "ferretdb") {
-				return nil, fmt.Errorf("prerelease %q should include `ferretdb`", prerelease)
-			}
-
-			if buildmetadata != "" {
-				return nil, fmt.Errorf("buildmetadata %q is present", buildmetadata)
+			var major, minor, patch, prerelease string
+			if major, minor, patch, prerelease, err = githubaction.SemVar(refName); err != nil {
+				return nil, err
 			}
 
 			pgVersion := strings.ToLower(getenv("INPUT_PG_VERSION"))
@@ -132,8 +91,8 @@ func define(getenv githubactions.GetenvFunc) (*result, error) {
 				return nil, fmt.Errorf("unexpected PostgreSQL version %q", pgVersion)
 			}
 
-			pgMajor := pgMatch[semVerTag.SubexpIndex("major")]
-			pgMinor := pgMatch[semVerTag.SubexpIndex("minor")]
+			pgMajor := pgMatch[pgVer.SubexpIndex("major")]
+			pgMinor := pgMatch[pgVer.SubexpIndex("minor")]
 
 			tags := []string{
 				fmt.Sprintf("%s-%s.%s.%s-%s", pgMajor, major, minor, patch, prerelease),

@@ -116,7 +116,7 @@ jobs:
         env:
           INPUT_PG_VERSION: ${{ matrix.pg }}
 
-      # Build and push evaluation Docker images
+      # Build and push Docker images
 
       - name: Check dirty
         run: |
