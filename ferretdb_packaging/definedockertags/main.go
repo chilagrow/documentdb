@@ -75,7 +75,7 @@ func debugEnv(action *githubactions.Action) {
 	}
 }
 
-// Define extracts Docker image names and tags from the environment variables defined by GitHub Actions.
+// define extracts Docker image names and tags from the environment variables defined by GitHub Actions.
 func define(getenv githubactions.GetenvFunc) (*result, error) {
 	repo := getenv("GITHUB_REPOSITORY")
 
@@ -103,15 +103,6 @@ func define(getenv githubactions.GetenvFunc) (*result, error) {
 			res, err = defineForBranch(owner, repo, refName)
 
 		case "tag":
-			pgVersion := strings.ToLower(getenv("INPUT_PG_VERSION"))
-			pgMatch := pgVer.FindStringSubmatch(pgVersion)
-			if pgMatch == nil || len(pgMatch) != pgVer.NumSubexp()+1 {
-				return nil, fmt.Errorf("unexpected PostgreSQL version %q", pgVersion)
-			}
-
-			pgMajor := pgMatch[semVerTag.SubexpIndex("major")]
-			pgMinor := pgMatch[semVerTag.SubexpIndex("minor")]
-
 			match := semVerTag.FindStringSubmatch(refName)
 			if match == nil || len(match) != semVerTag.NumSubexp()+1 {
 				return nil, fmt.Errorf("unexpected git tag %q", refName)
@@ -135,9 +126,16 @@ func define(getenv githubactions.GetenvFunc) (*result, error) {
 				return nil, fmt.Errorf("buildmetadata %q is present", buildmetadata)
 			}
 
-			var tags []string
+			pgVersion := strings.ToLower(getenv("INPUT_PG_VERSION"))
+			pgMatch := pgVer.FindStringSubmatch(pgVersion)
+			if pgMatch == nil || len(pgMatch) != pgVer.NumSubexp()+1 {
+				return nil, fmt.Errorf("unexpected PostgreSQL version %q", pgVersion)
+			}
 
-			tags = []string{
+			pgMajor := pgMatch[semVerTag.SubexpIndex("major")]
+			pgMinor := pgMatch[semVerTag.SubexpIndex("minor")]
+
+			tags := []string{
 				fmt.Sprintf("%s-%s.%s.%s-%s", pgMajor, major, minor, patch, prerelease),
 				"latest",
 			}
@@ -161,7 +159,7 @@ func define(getenv githubactions.GetenvFunc) (*result, error) {
 	}
 
 	if res == nil {
-		panic("both res and err are nil")
+		return nil, fmt.Errorf("both res and err are nil")
 	}
 
 	slices.Sort(res.developmentImages)
@@ -282,6 +280,6 @@ func imageURL(name string) string {
 
 	name, _, _ = strings.Cut(name, ":")
 
-	// there is not easy way to get Docker Hub URL for the given tag
+	// there is no easy way to get Docker Hub URL for the given tag
 	return fmt.Sprintf("https://hub.docker.com/r/%s/tags", name)
 }
