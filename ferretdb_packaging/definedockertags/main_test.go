@@ -40,9 +40,8 @@ func getEnvFunc(t *testing.T, env map[string]string) func(string) string {
 
 func TestDefine(t *testing.T) {
 	for name, tc := range map[string]struct {
-		env       map[string]string
-		pgVersion string
-		expected  *result
+		env      map[string]string
+		expected *result
 	}{
 		"pull_request": {
 			env: map[string]string{
@@ -52,6 +51,7 @@ func TestDefine(t *testing.T) {
 				"GITHUB_REF_NAME":   "1/merge",
 				"GITHUB_REF_TYPE":   "branch",
 				"GITHUB_REPOSITORY": "FerretDB/documentdb",
+				"INPUT_PG_VERSION":  "16",
 			},
 			expected: &result{
 				developmentImages: []string{
@@ -62,16 +62,17 @@ func TestDefine(t *testing.T) {
 
 		"pull_request_target": {
 			env: map[string]string{
-				"GITHUB_BASE_REF":   "main",
+				"GITHUB_BASE_REF":   "ferretdb",
 				"GITHUB_EVENT_NAME": "pull_request_target",
 				"GITHUB_HEAD_REF":   "docker-tag",
 				"GITHUB_REF_NAME":   "ferretdb",
 				"GITHUB_REF_TYPE":   "branch",
-				"GITHUB_REPOSITORY": "FerretDB/FerretDB",
+				"GITHUB_REPOSITORY": "FerretDB/documentdb",
+				"INPUT_PG_VERSION":  "16",
 			},
 			expected: &result{
 				developmentImages: []string{
-					"ghcr.io/ferretdb/ferretdb-dev:pr-docker-tag",
+					"ghcr.io/ferretdb/documentdb-dev:pr-docker-tag",
 				},
 			},
 		},
@@ -83,7 +84,8 @@ func TestDefine(t *testing.T) {
 				"GITHUB_HEAD_REF":   "",
 				"GITHUB_REF_NAME":   "main",
 				"GITHUB_REF_TYPE":   "branch",
-				"GITHUB_REPOSITORY": "FerretDB/FerretDB",
+				"GITHUB_REPOSITORY": "FerretDB/documentdb",
+				"INPUT_PG_VERSION":  "16",
 			},
 		},
 
@@ -95,18 +97,24 @@ func TestDefine(t *testing.T) {
 				"GITHUB_REF_NAME":   "v0.102.0-ferretdb",
 				"GITHUB_REF_TYPE":   "tag",
 				"GITHUB_REPOSITORY": "FerretDB/documentdb",
+				"INPUT_PG_VERSION":  "16",
 			},
-			pgVersion: "16",
 			expected: &result{
 				developmentImages: []string{
 					"ferretdb/documentdb-dev:16-0.102.0-ferretdb",
+					"ferretdb/documentdb-dev:latest",
 					"ghcr.io/ferretdb/documentdb-dev:16-0.102.0-ferretdb",
+					"ghcr.io/ferretdb/documentdb-dev:latest",
 					"quay.io/ferretdb/documentdb-dev:16-0.102.0-ferretdb",
+					"quay.io/ferretdb/documentdb-dev:latest",
 				},
 				productionImages: []string{
 					"ferretdb/documentdb:16-0.102.0-ferretdb",
+					"ferretdb/documentdb:latest",
 					"ghcr.io/ferretdb/documentdb:16-0.102.0-ferretdb",
+					"ghcr.io/ferretdb/documentdb:latest",
 					"quay.io/ferretdb/documentdb:16-0.102.0-ferretdb",
+					"quay.io/ferretdb/documentdb:latest",
 				},
 			},
 		},
@@ -118,9 +126,9 @@ func TestDefine(t *testing.T) {
 				"GITHUB_HEAD_REF":   "",
 				"GITHUB_REF_NAME":   "v0.102.0-ferretdb-2.0.0-rc2",
 				"GITHUB_REF_TYPE":   "tag",
-				"GITHUB_REPOSITORY": "FerretDB/FerretDB",
+				"GITHUB_REPOSITORY": "FerretDB/documentdb",
+				"INPUT_PG_VERSION":  "16.7", // set major and minor version
 			},
-			pgVersion: "16.7", // set major and minor version of Postgresql
 			expected: &result{
 				developmentImages: []string{
 					"ferretdb/documentdb-dev:16-0.102.0-ferretdb-2.0.0-rc2",
@@ -154,9 +162,9 @@ func TestDefine(t *testing.T) {
 				"GITHUB_HEAD_REF":   "",
 				"GITHUB_REF_NAME":   "v0.102.0-ferretdb-2.0.0-rc2",
 				"GITHUB_REF_TYPE":   "tag",
-				"GITHUB_REPOSITORY": "FerretDB/FerretDB",
+				"GITHUB_REPOSITORY": "FerretDB/documentdb",
+				"INPUT_PG_VERSION":  "16", // set major version only
 			},
-			pgVersion: "16", // set major version of Postgresql
 			expected: &result{
 				developmentImages: []string{
 					"ferretdb/documentdb-dev:16-0.102.0-ferretdb-2.0.0-rc2",
@@ -184,7 +192,8 @@ func TestDefine(t *testing.T) {
 				"GITHUB_HEAD_REF":   "",
 				"GITHUB_REF_NAME":   "0.102.0-ferretdb-2.0.0-rc2", // no leading v
 				"GITHUB_REF_TYPE":   "tag",
-				"GITHUB_REPOSITORY": "FerretDB/FerretDB",
+				"GITHUB_REPOSITORY": "FerretDB/documentdb",
+				"INPUT_PG_VERSION":  "16",
 			},
 		},
 
@@ -195,7 +204,8 @@ func TestDefine(t *testing.T) {
 				"GITHUB_HEAD_REF":   "",
 				"GITHUB_REF_NAME":   "ferretdb",
 				"GITHUB_REF_TYPE":   "branch",
-				"GITHUB_REPOSITORY": "FerretDB/FerretDB",
+				"GITHUB_REPOSITORY": "FerretDB/documentdb",
+				"INPUT_PG_VERSION":  "16",
 			},
 			expected: &result{
 				developmentImages: []string{
@@ -213,7 +223,8 @@ func TestDefine(t *testing.T) {
 				"GITHUB_HEAD_REF":   "",
 				"GITHUB_REF_NAME":   "ferretdb",
 				"GITHUB_REF_TYPE":   "branch",
-				"GITHUB_REPOSITORY": "FerretDB/FerretDB",
+				"GITHUB_REPOSITORY": "FerretDB/documentdb",
+				"INPUT_PG_VERSION":  "16",
 			},
 			expected: &result{
 				developmentImages: []string{

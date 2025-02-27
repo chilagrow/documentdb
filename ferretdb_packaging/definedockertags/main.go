@@ -52,6 +52,9 @@ type result struct {
 // but with a leading `v`.
 var semVerTag = regexp.MustCompile(`^v(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)(?:-(?P<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+(?P<buildmetadata>[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$`)
 
+// pgVer is the version of PostgreSQL with or without minor.
+var pgVer = regexp.MustCompile(`^(?P<major>0|[1-9]\d*)(?:\.(?P<minor>0|[1-9]\d*))?$`)
+
 // debugEnv logs all environment variables that start with `GITHUB_` or `INPUT_`
 // in debug level.
 func debugEnv(action *githubactions.Action) {
@@ -100,6 +103,15 @@ func define(getenv githubactions.GetenvFunc) (*result, error) {
 			res, err = defineForBranch(owner, repo, refName)
 
 		case "tag":
+			pgVersion := strings.ToLower(getenv("INPUT_PG_VERSION"))
+			pgMatch := pgVer.FindStringSubmatch(pgVersion)
+			if pgMatch == nil || len(pgMatch) != pgVer.NumSubexp()+1 {
+				return nil, fmt.Errorf("unexpected PostgreSQL version %q", pgVersion)
+			}
+
+			pgMajor := pgMatch[semVerTag.SubexpIndex("major")]
+			pgMinor := pgMatch[semVerTag.SubexpIndex("minor")]
+
 			match := semVerTag.FindStringSubmatch(refName)
 			if match == nil || len(match) != semVerTag.NumSubexp()+1 {
 				return nil, fmt.Errorf("unexpected git tag %q", refName)
@@ -109,29 +121,29 @@ func define(getenv githubactions.GetenvFunc) (*result, error) {
 			minor := match[semVerTag.SubexpIndex("minor")]
 			patch := match[semVerTag.SubexpIndex("patch")]
 			prerelease := match[semVerTag.SubexpIndex("prerelease")]
+			buildmetadata := match[semVerTag.SubexpIndex("buildmetadata")]
+
+			if prerelease == "" {
+				return nil, fmt.Errorf("prerelease is empty")
+			}
+
+			if !strings.Contains(prerelease, "ferretdb") {
+				return nil, fmt.Errorf("prerelease %q should include `ferretdb`", prerelease)
+			}
+
+			if buildmetadata != "" {
+				return nil, fmt.Errorf("buildmetadata %q is present", buildmetadata)
+			}
 
 			var tags []string
 
-			if prerelease == "" {
-				tags = []string{
-					major,
-					major + "." + minor,
-					major + "." + minor + "." + patch,
-				}
+			tags = []string{
+				fmt.Sprintf("%s-%s.%s.%s-%s", pgMajor, major, minor, patch, prerelease),
+				"latest",
+			}
 
-				if major == "2" {
-					tags = append(tags, "latest")
-				}
-			} else {
-				tags = []string{major + "." + minor + "." + patch + "-" + prerelease}
-
-				// while v2 is not GA
-				if major == "2" {
-					tags = append(tags, major)
-					tags = append(tags, major+"."+minor)
-					tags = append(tags, major+"."+minor+"."+patch)
-					tags = append(tags, "latest")
-				}
+			if pgMinor != "" {
+				tags = append(tags, fmt.Sprintf("%s.%s-%s.%s.%s-%s", pgMajor, pgMinor, major, minor, patch, prerelease))
 			}
 
 			res = defineForTag(owner, repo, tags)
@@ -177,22 +189,13 @@ func defineForPR(owner, repo, branch string) *result {
 
 // defineForBranch defines Docker image names and tags for branch builds.
 func defineForBranch(owner, repo, branch string) (*result, error) {
-	// see packages.yml
-	switch {
-	case branch == "main":
-		fallthrough
-	case strings.HasPrefix(branch, "main-"):
-		fallthrough
-	case strings.HasPrefix(branch, "releases/"):
-		branch = strings.ReplaceAll(branch, "/", "-")
-
-	default:
+	if branch != "ferretdb" {
 		return nil, fmt.Errorf("unhandled branch %q", branch)
 	}
 
 	res := &result{
 		developmentImages: []string{
-			fmt.Sprintf("ghcr.io/%s/%s-dev:%s", owner, repo, branch),
+			fmt.Sprintf("ghcr.io/%s/%s-dev:branch-%s", owner, repo, branch),
 		},
 	}
 
@@ -202,12 +205,12 @@ func defineForBranch(owner, repo, branch string) (*result, error) {
 	}
 
 	// we don't have Quay.io and Docker Hub repos for other GitHub repos
-	if repo != "ferretdb" {
+	if repo != "documentdb" {
 		return res, nil
 	}
 
-	res.developmentImages = append(res.developmentImages, fmt.Sprintf("quay.io/ferretdb/ferretdb-dev:%s", branch))
-	res.developmentImages = append(res.developmentImages, fmt.Sprintf("ferretdb/ferretdb-dev:%s", branch))
+	res.developmentImages = append(res.developmentImages, fmt.Sprintf("quay.io/ferretdb/documentdb-dev:branch-%s", branch))
+	res.developmentImages = append(res.developmentImages, fmt.Sprintf("ferretdb/documentdb-dev:branch-%s", branch))
 
 	return res, nil
 }
@@ -227,16 +230,16 @@ func defineForTag(owner, repo string, tags []string) *result {
 	}
 
 	// we don't have Quay.io and Docker Hub repos for other GitHub repos
-	if repo != "ferretdb" {
+	if repo != "documentdb" {
 		return res
 	}
 
 	for _, t := range tags {
-		res.developmentImages = append(res.developmentImages, fmt.Sprintf("quay.io/ferretdb/ferretdb-dev:%s", t))
-		res.productionImages = append(res.productionImages, fmt.Sprintf("quay.io/ferretdb/ferretdb:%s", t))
+		res.developmentImages = append(res.developmentImages, fmt.Sprintf("quay.io/ferretdb/documentdb-dev:%s", t))
+		res.productionImages = append(res.productionImages, fmt.Sprintf("quay.io/ferretdb/documentdb:%s", t))
 
-		res.developmentImages = append(res.developmentImages, fmt.Sprintf("ferretdb/ferretdb-dev:%s", t))
-		res.productionImages = append(res.productionImages, fmt.Sprintf("ferretdb/ferretdb:%s", t))
+		res.developmentImages = append(res.developmentImages, fmt.Sprintf("ferretdb/documentdb-dev:%s", t))
+		res.productionImages = append(res.productionImages, fmt.Sprintf("ferretdb/documentdb:%s", t))
 	}
 
 	return res
