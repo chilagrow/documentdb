@@ -126,7 +126,7 @@ docker build --platform linux/amd64 -t documentdb-build-packages:latest -f ferre
     --build-arg BASE_IMAGE=$DOCKER_IMAGE --build-arg POSTGRES_VERSION=$PG --build-arg DOCUMENTDB_VERSION=$DOCUMENTDB_VERSION .
 
 # Run the Docker container to build the packages
-docker run --platform linux/amd64 --rm --env OS=OS -v $abs_output_dir:/output documentdb-build-packages:latest
+docker run --platform linux/amd64 --rm --env OS=$OS -v $abs_output_dir:/output documentdb-build-packages:latest
 
 echo "Packages built successfully!!"
 
