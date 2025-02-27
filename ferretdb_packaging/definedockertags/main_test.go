@@ -109,6 +109,41 @@ func TestDefine(t *testing.T) {
 			},
 		},
 
+		"push/ferretdb": {
+			env: map[string]string{
+				"GITHUB_BASE_REF":   "",
+				"GITHUB_EVENT_NAME": "push",
+				"GITHUB_HEAD_REF":   "",
+				"GITHUB_REF_NAME":   "ferretdb",
+				"GITHUB_REF_TYPE":   "branch",
+				"GITHUB_REPOSITORY": "FerretDB/documentdb",
+				"INPUT_PG_VERSION":  "16",
+			},
+			expected: &result{
+				developmentImages: []string{
+					"ferretdb/documentdb-dev:ferretdb",
+					"ghcr.io/ferretdb/documentdb-dev:ferretdb",
+					"quay.io/ferretdb/documentdb-dev:ferretdb",
+				},
+			},
+		},
+		"push/ferretdb-other": {
+			env: map[string]string{
+				"GITHUB_BASE_REF":   "",
+				"GITHUB_EVENT_NAME": "push",
+				"GITHUB_HEAD_REF":   "",
+				"GITHUB_REF_NAME":   "ferretdb",
+				"GITHUB_REF_TYPE":   "branch",
+				"GITHUB_REPOSITORY": "OtherOrg/OtherRepo",
+				"INPUT_PG_VERSION":  "16",
+			},
+			expected: &result{
+				developmentImages: []string{
+					"ghcr.io/otherorg/otherrepo-dev:ferretdb",
+				},
+			},
+		},
+
 		"push/main": {
 			env: map[string]string{
 				"GITHUB_BASE_REF":   "",
@@ -328,9 +363,9 @@ func TestDefine(t *testing.T) {
 			},
 			expected: &result{
 				developmentImages: []string{
-					"ferretdb/documentdb-dev:branch-ferretdb",
-					"ghcr.io/ferretdb/documentdb-dev:branch-ferretdb",
-					"quay.io/ferretdb/documentdb-dev:branch-ferretdb",
+					"ferretdb/documentdb-dev:ferretdb",
+					"ghcr.io/ferretdb/documentdb-dev:ferretdb",
+					"quay.io/ferretdb/documentdb-dev:ferretdb",
 				},
 			},
 		},
@@ -346,7 +381,7 @@ func TestDefine(t *testing.T) {
 			},
 			expected: &result{
 				developmentImages: []string{
-					"ghcr.io/otherorg/otherrepo-dev:branch-ferretdb",
+					"ghcr.io/otherorg/otherrepo-dev:ferretdb",
 				},
 			},
 		},
@@ -363,9 +398,9 @@ func TestDefine(t *testing.T) {
 			},
 			expected: &result{
 				developmentImages: []string{
-					"ferretdb/documentdb-dev:branch-ferretdb",
-					"ghcr.io/ferretdb/documentdb-dev:branch-ferretdb",
-					"quay.io/ferretdb/documentdb-dev:branch-ferretdb",
+					"ferretdb/documentdb-dev:ferretdb",
+					"ghcr.io/ferretdb/documentdb-dev:ferretdb",
+					"quay.io/ferretdb/documentdb-dev:ferretdb",
 				},
 			},
 		},
@@ -381,7 +416,7 @@ func TestDefine(t *testing.T) {
 			},
 			expected: &result{
 				developmentImages: []string{
-					"ghcr.io/otherorg/otherrepo-dev:branch-ferretdb",
+					"ghcr.io/otherorg/otherrepo-dev:ferretdb",
 				},
 			},
 		},

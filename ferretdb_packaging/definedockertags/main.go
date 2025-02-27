@@ -152,7 +152,7 @@ func defineForBranch(owner, repo, branch string) (*result, error) {
 
 	res := &result{
 		developmentImages: []string{
-			fmt.Sprintf("ghcr.io/%s/%s-dev:branch-%s", owner, repo, branch),
+			fmt.Sprintf("ghcr.io/%s/%s-dev:ferretdb", owner, repo),
 		},
 	}
 
@@ -166,8 +166,8 @@ func defineForBranch(owner, repo, branch string) (*result, error) {
 		return res, nil
 	}
 
-	res.developmentImages = append(res.developmentImages, fmt.Sprintf("quay.io/ferretdb/documentdb-dev:branch-%s", branch))
-	res.developmentImages = append(res.developmentImages, fmt.Sprintf("ferretdb/documentdb-dev:branch-%s", branch))
+	res.developmentImages = append(res.developmentImages, "quay.io/ferretdb/documentdb-dev:ferretdb")
+	res.developmentImages = append(res.developmentImages, "ferretdb/documentdb-dev:ferretdb")
 
 	return res, nil
 }
