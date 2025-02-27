@@ -96,7 +96,7 @@ if [[ -z "$DOCUMENTDB_VERSION" ]]; then
 fi
 
 # Set the appropriate Docker image based on the OS
-# and set the OS name prefix used for the artifacts
+# and set the valid artifact OS name prefix which replaces `:` with `-`
 case $OS in
     deb11)
         DOCKER_IMAGE="debian:bullseye"
