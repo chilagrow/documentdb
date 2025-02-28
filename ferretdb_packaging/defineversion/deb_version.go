@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/sethvargo/go-githubactions"
@@ -27,9 +28,33 @@ import (
 // see pg_documentdb_core/documentdb_core.control.
 var controlDefaultVer = regexp.MustCompile(`(?m)^default_version = '(?P<major>[0-9]+)\.(?P<minor>[0-9]+)-(?P<patch>[0-9]+)'$`)
 
+// semVerTag is a https://semver.org/#is-there-a-suggested-regular-expression-regex-to-check-a-semver-string,
+// but with a leading `v`.
+var semVerTag = regexp.MustCompile(`^v(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)(?:-(?P<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+(?P<buildmetadata>[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$`)
+
 // disallowedVer matches disallowed characters of Debian `upstream_version` when used without `debian_revision`.
 // See https://www.debian.org/doc/debian-policy/ch-controlfields.html#version.
 var disallowedVer = regexp.MustCompile(`[^A-Za-z0-9~.+]`)
+
+// debugEnv logs all environment variables that start with `GITHUB_` or `INPUT_`
+// in debug level.
+func debugEnv(action *githubactions.Action) {
+	res := make([]string, 0, 30)
+
+	for _, l := range os.Environ() {
+		if strings.HasPrefix(l, "GITHUB_") || strings.HasPrefix(l, "INPUT_") {
+			res = append(res, l)
+		}
+	}
+
+	slices.Sort(res)
+
+	action.Debugf("Dumping environment variables:")
+
+	for _, l := range res {
+		action.Debugf("\t%s", l)
+	}
+}
 
 // getControlDefaultVersion returns the default_version field from the control file
 // in SemVer format (0.100-0 -> 0.100.0).
@@ -115,6 +140,40 @@ func definePackageVersionForBranch(controlDefaultVersion, branch string) (string
 	default:
 		return "", fmt.Errorf("unhandled branch %q", branch)
 	}
+}
+
+// semVar parses tag and returns version components.
+//
+// It returns error for invalid tag syntax, prerelease is missing `ferretdb` or if it has buildmetadata.
+func semVar(tag string) (major, minor, patch, prerelease string, err error) {
+	match := semVerTag.FindStringSubmatch(tag)
+	if match == nil || len(match) != semVerTag.NumSubexp()+1 {
+		err = fmt.Errorf("unexpected tag syntax %q", tag)
+		return
+	}
+
+	major = match[semVerTag.SubexpIndex("major")]
+	minor = match[semVerTag.SubexpIndex("minor")]
+	patch = match[semVerTag.SubexpIndex("patch")]
+	prerelease = match[semVerTag.SubexpIndex("prerelease")]
+	buildmetadata := match[semVerTag.SubexpIndex("buildmetadata")]
+
+	if prerelease == "" {
+		err = fmt.Errorf("prerelease is empty")
+		return
+	}
+
+	if !strings.Contains(prerelease, "ferretdb") {
+		err = fmt.Errorf("prerelease %q should include `ferretdb`", prerelease)
+		return
+	}
+
+	if buildmetadata != "" {
+		err = fmt.Errorf("buildmetadata %q is present", buildmetadata)
+		return
+	}
+
+	return
 }
 
 // definePackagerVersionForTag returns valid Debian package version for tag.

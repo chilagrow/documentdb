@@ -230,3 +230,55 @@ requires = 'documentdb_core, pg_cron, tsm_system_rows, vector, postgis, rum'`
 
 	require.Equal(t, "0.100.0", controlDefaultVersion)
 }
+
+func TestSemVar(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		tag        string
+		major      string
+		minor      string
+		patch      string
+		prerelease string
+		err        string
+	}{
+		"Valid": {
+			tag:        "v1.100.0-ferretdb",
+			major:      "1",
+			minor:      "100",
+			patch:      "0",
+			prerelease: "ferretdb",
+		},
+		"SpecificVersion": {
+			tag:        "v1.100.0-ferretdb-2.0.1",
+			major:      "1",
+			minor:      "100",
+			patch:      "0",
+			prerelease: "ferretdb-2.0.1",
+		},
+		"MissingV": {
+			tag: "0.100.0-ferretdb",
+			err: `unexpected tag syntax "0.100.0-ferretdb"`,
+		},
+		"MissingFerretDB": {
+			tag: "v0.100.0",
+			err: "prerelease is empty",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			major, minor, patch, prerelease, err := semVar(tc.tag)
+
+			if tc.err != "" {
+				require.EqualError(t, err, tc.err)
+				return
+			}
+
+			require.Equal(t, tc.major, major)
+			require.Equal(t, tc.minor, minor)
+			require.Equal(t, tc.patch, patch)
+			require.Equal(t, tc.prerelease, prerelease)
+		})
+	}
+}
