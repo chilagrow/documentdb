@@ -177,7 +177,7 @@ func definePackagerVersionForTag(tag string) (string, error) {
 
 // setDebianVersionResults sets action output parameters, summary, etc.
 func setDebianVersionResults(action *githubactions.Action, res string) {
-	output := fmt.Sprintf("version: %s", res)
+	output := fmt.Sprintf("version: `%s`", res)
 
 	action.AddStepSummary(output)
 	action.Infof("%s", output)
