@@ -28,7 +28,7 @@ import (
 func TestDefineDockerTags(t *testing.T) {
 	for name, tc := range map[string]struct {
 		env      map[string]string
-		expected *result
+		expected *images
 	}{
 		"pull_request": {
 			env: map[string]string{
@@ -40,7 +40,7 @@ func TestDefineDockerTags(t *testing.T) {
 				"GITHUB_REPOSITORY": "FerretDB/documentdb",
 				"INPUT_PG_VERSION":  "16",
 			},
-			expected: &result{
+			expected: &images{
 				developmentImages: []string{
 					"ghcr.io/ferretdb/documentdb-dev:pr-docker-tag",
 				},
@@ -56,7 +56,7 @@ func TestDefineDockerTags(t *testing.T) {
 				"GITHUB_REPOSITORY": "OtherOrg/OtherRepo",
 				"INPUT_PG_VERSION":  "16",
 			},
-			expected: &result{
+			expected: &images{
 				developmentImages: []string{
 					"ghcr.io/otherorg/otherrepo-dev:pr-docker-tag",
 				},
@@ -73,7 +73,7 @@ func TestDefineDockerTags(t *testing.T) {
 				"GITHUB_REPOSITORY": "FerretDB/documentdb",
 				"INPUT_PG_VERSION":  "16",
 			},
-			expected: &result{
+			expected: &images{
 				developmentImages: []string{
 					"ghcr.io/ferretdb/documentdb-dev:pr-docker-tag",
 				},
@@ -89,7 +89,7 @@ func TestDefineDockerTags(t *testing.T) {
 				"GITHUB_REPOSITORY": "OtherOrg/OtherRepo",
 				"INPUT_PG_VERSION":  "16",
 			},
-			expected: &result{
+			expected: &images{
 				developmentImages: []string{
 					"ghcr.io/otherorg/otherrepo-dev:pr-docker-tag",
 				},
@@ -106,7 +106,7 @@ func TestDefineDockerTags(t *testing.T) {
 				"GITHUB_REPOSITORY": "FerretDB/documentdb",
 				"INPUT_PG_VERSION":  "16",
 			},
-			expected: &result{
+			expected: &images{
 				developmentImages: []string{
 					"ferretdb/documentdb-dev:ferretdb",
 					"ghcr.io/ferretdb/documentdb-dev:ferretdb",
@@ -124,7 +124,7 @@ func TestDefineDockerTags(t *testing.T) {
 				"GITHUB_REPOSITORY": "OtherOrg/OtherRepo",
 				"INPUT_PG_VERSION":  "16",
 			},
-			expected: &result{
+			expected: &images{
 				developmentImages: []string{
 					"ghcr.io/otherorg/otherrepo-dev:ferretdb",
 				},
@@ -164,7 +164,7 @@ func TestDefineDockerTags(t *testing.T) {
 				"GITHUB_REPOSITORY": "FerretDB/documentdb",
 				"INPUT_PG_VERSION":  "16",
 			},
-			expected: &result{
+			expected: &images{
 				developmentImages: []string{
 					"ferretdb/documentdb-dev:16-0.102.0-ferretdb",
 					"ferretdb/documentdb-dev:latest",
@@ -193,7 +193,7 @@ func TestDefineDockerTags(t *testing.T) {
 				"GITHUB_REPOSITORY": "OtherOrg/OtherRepo",
 				"INPUT_PG_VERSION":  "16",
 			},
-			expected: &result{
+			expected: &images{
 				developmentImages: []string{
 					"ghcr.io/otherorg/otherrepo-dev:16-0.102.0-ferretdb",
 					"ghcr.io/otherorg/otherrepo-dev:latest",
@@ -215,7 +215,7 @@ func TestDefineDockerTags(t *testing.T) {
 				"GITHUB_REPOSITORY": "FerretDB/documentdb",
 				"INPUT_PG_VERSION":  "16.7", // set major and minor version
 			},
-			expected: &result{
+			expected: &images{
 				developmentImages: []string{
 					"ferretdb/documentdb-dev:16-0.102.0-ferretdb-2.0.0-rc2",
 					"ferretdb/documentdb-dev:16.7-0.102.0-ferretdb-2.0.0-rc2",
@@ -250,7 +250,7 @@ func TestDefineDockerTags(t *testing.T) {
 				"GITHUB_REPOSITORY": "OtherOrg/OtherRepo",
 				"INPUT_PG_VERSION":  "16.7", // set major and minor version
 			},
-			expected: &result{
+			expected: &images{
 				developmentImages: []string{
 					"ghcr.io/otherorg/otherrepo-dev:16-0.102.0-ferretdb-2.0.0-rc2",
 					"ghcr.io/otherorg/otherrepo-dev:16.7-0.102.0-ferretdb-2.0.0-rc2",
@@ -274,7 +274,7 @@ func TestDefineDockerTags(t *testing.T) {
 				"GITHUB_REPOSITORY": "FerretDB/documentdb",
 				"INPUT_PG_VERSION":  "16", // set major version only
 			},
-			expected: &result{
+			expected: &images{
 				developmentImages: []string{
 					"ferretdb/documentdb-dev:16-0.102.0-ferretdb-2.0.0-rc2",
 					"ferretdb/documentdb-dev:latest",
@@ -303,7 +303,7 @@ func TestDefineDockerTags(t *testing.T) {
 				"GITHUB_REPOSITORY": "OtherOrg/OtherRepo",
 				"INPUT_PG_VERSION":  "16", // set major version only
 			},
-			expected: &result{
+			expected: &images{
 				developmentImages: []string{
 					"ghcr.io/otherorg/otherrepo-dev:16-0.102.0-ferretdb-2.0.0-rc2",
 					"ghcr.io/otherorg/otherrepo-dev:latest",
@@ -348,7 +348,7 @@ func TestDefineDockerTags(t *testing.T) {
 				"GITHUB_REPOSITORY": "FerretDB/documentdb",
 				"INPUT_PG_VERSION":  "16",
 			},
-			expected: &result{
+			expected: &images{
 				developmentImages: []string{
 					"ferretdb/documentdb-dev:ferretdb",
 					"ghcr.io/ferretdb/documentdb-dev:ferretdb",
@@ -366,7 +366,7 @@ func TestDefineDockerTags(t *testing.T) {
 				"GITHUB_REPOSITORY": "OtherOrg/OtherRepo",
 				"INPUT_PG_VERSION":  "16",
 			},
-			expected: &result{
+			expected: &images{
 				developmentImages: []string{
 					"ghcr.io/otherorg/otherrepo-dev:ferretdb",
 				},
@@ -383,7 +383,7 @@ func TestDefineDockerTags(t *testing.T) {
 				"GITHUB_REPOSITORY": "FerretDB/documentdb",
 				"INPUT_PG_VERSION":  "16",
 			},
-			expected: &result{
+			expected: &images{
 				developmentImages: []string{
 					"ferretdb/documentdb-dev:ferretdb",
 					"ghcr.io/ferretdb/documentdb-dev:ferretdb",
@@ -401,7 +401,7 @@ func TestDefineDockerTags(t *testing.T) {
 				"GITHUB_REPOSITORY": "OtherOrg/OtherRepo",
 				"INPUT_PG_VERSION":  "16",
 			},
-			expected: &result{
+			expected: &images{
 				developmentImages: []string{
 					"ghcr.io/otherorg/otherrepo-dev:ferretdb",
 				},
@@ -458,9 +458,10 @@ func TestDockerTagsResults(t *testing.T) {
 	})
 	action := githubactions.New(githubactions.WithGetenv(getenv), githubactions.WithWriter(&stdout))
 
-	result := &result{
+	result := &images{
 		developmentImages: []string{
 			"ghcr.io/ferretdb/documentdb-dev:16-0.102.0-ferretdb",
+			"ghcr.io/ferretdb/documentdb-dev:latest",
 		},
 		productionImages: []string{
 			"quay.io/ferretdb/documentdb:latest",
@@ -473,6 +474,7 @@ func TestDockerTagsResults(t *testing.T) {
  |Type        |Image                                                                                                                |
  |----        |-----                                                                                                                |
  |Development |['ghcr.io/ferretdb/documentdb-dev:16-0.102.0-ferretdb'](https://ghcr.io/ferretdb/documentdb-dev:16-0.102.0-ferretdb) |
+ |Development |['ghcr.io/ferretdb/documentdb-dev:latest'](https://ghcr.io/ferretdb/documentdb-dev:latest)                           |
  |Production  |['quay.io/ferretdb/documentdb:latest'](https://quay.io/ferretdb/documentdb:latest)                                   |
 
 `[1:], "'", "`",
@@ -483,6 +485,7 @@ func TestDockerTagsResults(t *testing.T) {
  |Type        |Image                                                                                                                |
  |----        |-----                                                                                                                |
  |Development |['ghcr.io/ferretdb/documentdb-dev:16-0.102.0-ferretdb'](https://ghcr.io/ferretdb/documentdb-dev:16-0.102.0-ferretdb) |
+ |Development |['ghcr.io/ferretdb/documentdb-dev:latest'](https://ghcr.io/ferretdb/documentdb-dev:latest)                           |
  |Production  |['quay.io/ferretdb/documentdb:latest'](https://quay.io/ferretdb/documentdb:latest)                                   |
 
 `[1:], "'", "`",
@@ -493,7 +496,7 @@ func TestDockerTagsResults(t *testing.T) {
 
 	expectedOutput := `
 development_images<<_GitHubActionsFileCommandDelimeter_
-ghcr.io/ferretdb/documentdb-dev:16-0.102.0-ferretdb
+ghcr.io/ferretdb/documentdb-dev:16-0.102.0-ferretdb,ghcr.io/ferretdb/documentdb-dev:latest
 _GitHubActionsFileCommandDelimeter_
 production_images<<_GitHubActionsFileCommandDelimeter_
 quay.io/ferretdb/documentdb:latest

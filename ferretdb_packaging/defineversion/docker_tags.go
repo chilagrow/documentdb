@@ -16,15 +16,16 @@ package main
 
 import (
 	"fmt"
-	"github.com/sethvargo/go-githubactions"
 	"regexp"
 	"slices"
 	"strings"
 	"text/tabwriter"
+
+	"github.com/sethvargo/go-githubactions"
 )
 
-// result represents Docker image names and tags extracted from the environment.
-type result struct {
+// images represents Docker image names and tags extracted from the environment.
+type images struct {
 	developmentImages []string
 	productionImages  []string
 }
@@ -33,7 +34,7 @@ type result struct {
 var pgVer = regexp.MustCompile(`^(?P<major>0|[1-9]\d*)(?:\.(?P<minor>0|[1-9]\d*))?$`)
 
 // defineDockerTags extracts Docker image names and tags from the environment variables defined by GitHub Actions.
-func defineDockerTags(getenv githubactions.GetenvFunc) (*result, error) {
+func defineDockerTags(getenv githubactions.GetenvFunc) (*images, error) {
 	repo := getenv("GITHUB_REPOSITORY")
 
 	// to support GitHub forks
@@ -44,7 +45,7 @@ func defineDockerTags(getenv githubactions.GetenvFunc) (*result, error) {
 	owner := parts[0]
 	repo = parts[1]
 
-	var res *result
+	var res *images
 	var err error
 
 	switch event := getenv("GITHUB_EVENT_NAME"); event {
@@ -65,7 +66,7 @@ func defineDockerTags(getenv githubactions.GetenvFunc) (*result, error) {
 				return nil, err
 			}
 
-			pgVersion := strings.ToLower(getenv("INPUT_PG_VERSION"))
+			pgVersion := getenv("INPUT_PG_VERSION")
 			pgMatch := pgVer.FindStringSubmatch(pgVersion)
 			if pgMatch == nil || len(pgMatch) != pgVer.NumSubexp()+1 {
 				return nil, fmt.Errorf("unexpected PostgreSQL version %q", pgVersion)
@@ -108,12 +109,12 @@ func defineDockerTags(getenv githubactions.GetenvFunc) (*result, error) {
 }
 
 // defineForPR defines Docker image names and tags for pull requests.
-func defineForPR(owner, repo, branch string) *result {
+func defineForPR(owner, repo, branch string) *images {
 	// for branches like "dependabot/submodules/XXX"
 	parts := strings.Split(branch, "/")
 	branch = parts[len(parts)-1]
 
-	res := &result{
+	res := &images{
 		developmentImages: []string{
 			fmt.Sprintf("ghcr.io/%s/%s-dev:pr-%s", owner, repo, branch),
 		},
@@ -125,12 +126,12 @@ func defineForPR(owner, repo, branch string) *result {
 }
 
 // defineForBranch defines Docker image names and tags for branch builds.
-func defineForBranch(owner, repo, branch string) (*result, error) {
+func defineForBranch(owner, repo, branch string) (*images, error) {
 	if branch != "ferretdb" {
 		return nil, fmt.Errorf("unhandled branch %q", branch)
 	}
 
-	res := &result{
+	res := &images{
 		developmentImages: []string{
 			fmt.Sprintf("ghcr.io/%s/%s-dev:ferretdb", owner, repo),
 		},
@@ -153,8 +154,8 @@ func defineForBranch(owner, repo, branch string) (*result, error) {
 }
 
 // defineForTag defines Docker image names and tags for prerelease tag builds.
-func defineForTag(owner, repo string, tags []string) *result {
-	res := new(result)
+func defineForTag(owner, repo string, tags []string) *images {
+	res := new(images)
 
 	for _, t := range tags {
 		res.developmentImages = append(res.developmentImages, fmt.Sprintf("ghcr.io/%s/%s-dev:%s", owner, repo, t))
@@ -183,7 +184,7 @@ func defineForTag(owner, repo string, tags []string) *result {
 }
 
 // setDockerTagsResults sets action output parameters, summary, etc.
-func setDockerTagsResults(action *githubactions.Action, res *result) {
+func setDockerTagsResults(action *githubactions.Action, res *images) {
 	var buf strings.Builder
 	w := tabwriter.NewWriter(&buf, 1, 1, 1, ' ', tabwriter.Debug)
 	fmt.Fprintf(w, "\tType\tImage\t\n")
