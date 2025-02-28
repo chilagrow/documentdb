@@ -194,8 +194,7 @@ func definePackageVersionForBranch(controlDefaultVersion, branch string) (string
 func semVar(tag string) (major, minor, patch, prerelease string, err error) {
 	match := semVerTag.FindStringSubmatch(tag)
 	if match == nil || len(match) != semVerTag.NumSubexp()+1 {
-		err = fmt.Errorf("unexpected tag syntax %q", tag)
-		return
+		return "", "", "", "", fmt.Errorf("unexpected tag syntax %q", tag)
 	}
 
 	major = match[semVerTag.SubexpIndex("major")]
@@ -205,18 +204,15 @@ func semVar(tag string) (major, minor, patch, prerelease string, err error) {
 	buildmetadata := match[semVerTag.SubexpIndex("buildmetadata")]
 
 	if prerelease == "" {
-		err = fmt.Errorf("prerelease is empty")
-		return
+		return "", "", "", "", fmt.Errorf("prerelease is empty")
 	}
 
 	if !strings.Contains(prerelease, "ferretdb") {
-		err = fmt.Errorf("prerelease %q should include `ferretdb`", prerelease)
-		return
+		return "", "", "", "", fmt.Errorf("prerelease %q should include `ferretdb`", prerelease)
 	}
 
 	if buildmetadata != "" {
-		err = fmt.Errorf("buildmetadata %q is present", buildmetadata)
-		return
+		return "", "", "", "", fmt.Errorf("buildmetadata %q is present", buildmetadata)
 	}
 
 	return
