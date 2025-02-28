@@ -46,7 +46,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [deb11, deb12, ubuntu22.04, ubuntu24.04]
-        pg: [15, 16]
+        pg: [15, 16, 17]
 
     steps:
       - name: Checkout code
@@ -61,7 +61,7 @@ jobs:
           cd ferretdb_packaging
           go mod tidy
           go mod verify
-          go run ./defineversion --control-file ../pg_documentdb_core/documentdb_core.control
+          go run ./defineversion --command deb-version --control-file ../pg_documentdb_core/documentdb_core.control
 
       - name: Build ${{ steps.version.outputs.version }}
         if: steps.version.outputs.version != ''
@@ -112,7 +112,7 @@ jobs:
           cd ferretdb_packaging
           go mod tidy
           go mod verify
-          go run ./definedockertags
+          go run ./defineversion --command docker-tags
         env:
           INPUT_PG_VERSION: ${{ matrix.pg }}
 
