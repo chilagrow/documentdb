@@ -205,8 +205,18 @@ func setDockerTagsResults(action *githubactions.Action, res *images) {
 	action.AddStepSummary(buf.String())
 	action.Infof("%s", buf.String())
 
-	action.SetOutput("development_images", strings.Join(res.developmentImages, ","))
-	action.SetOutput("production_images", strings.Join(res.productionImages, ","))
+	developmentTags := make([]string, len(res.developmentImages))
+	for i, image := range res.developmentImages {
+		developmentTags[i] = fmt.Sprintf("--tag=%s", image)
+	}
+
+	productionTags := make([]string, len(res.productionImages))
+	for i, image := range res.productionImages {
+		productionTags[i] = fmt.Sprintf("--tag=%s", image)
+	}
+
+	action.SetOutput("development_images", strings.Join(developmentTags, " "))
+	action.SetOutput("production_images", strings.Join(productionTags, " "))
 }
 
 // imageURL returns HTML page URL for the given image name and tag.

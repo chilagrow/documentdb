@@ -496,10 +496,10 @@ func TestDockerTagsResults(t *testing.T) {
 
 	expectedOutput := `
 development_images<<_GitHubActionsFileCommandDelimeter_
-ghcr.io/ferretdb/documentdb-dev:16-0.102.0-ferretdb,ghcr.io/ferretdb/documentdb-dev:latest
+--tag=ghcr.io/ferretdb/documentdb-dev:16-0.102.0-ferretdb --tag=ghcr.io/ferretdb/documentdb-dev:latest
 _GitHubActionsFileCommandDelimeter_
 production_images<<_GitHubActionsFileCommandDelimeter_
-quay.io/ferretdb/documentdb:latest
+--tag=quay.io/ferretdb/documentdb:latest
 _GitHubActionsFileCommandDelimeter_
 `[1:]
 	b, err = io.ReadAll(outputF)
