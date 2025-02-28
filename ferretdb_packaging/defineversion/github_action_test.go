@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package githubaction
+package main
 
 import (
 	"testing"
@@ -57,7 +57,7 @@ func TestSemVar(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			major, minor, patch, prerelease, err := SemVar(tc.tag)
+			major, minor, patch, prerelease, err := semVar(tc.tag)
 
 			if tc.err != "" {
 				require.EqualError(t, err, tc.err)

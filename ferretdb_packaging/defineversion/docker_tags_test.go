@@ -16,29 +16,16 @@ package main
 
 import (
 	"bytes"
+	"github.com/sethvargo/go-githubactions"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"io"
 	"os"
 	"strings"
 	"testing"
-
-	"github.com/sethvargo/go-githubactions"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
-// getEnvFunc implements [os.Getenv] for testing.
-func getEnvFunc(t *testing.T, env map[string]string) func(string) string {
-	t.Helper()
-
-	return func(key string) string {
-		val, ok := env[key]
-		require.True(t, ok, "missing key %q", key)
-
-		return val
-	}
-}
-
-func TestDefine(t *testing.T) {
+func TestDefineDockerTags(t *testing.T) {
 	for name, tc := range map[string]struct {
 		env      map[string]string
 		expected *result
@@ -422,7 +409,7 @@ func TestDefine(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			actual, err := define(getEnvFunc(t, tc.env))
+			actual, err := defineDockerTags(getEnvFunc(t, tc.env))
 			if tc.expected == nil {
 				require.Error(t, err)
 				return
@@ -453,7 +440,7 @@ func TestImageURL(t *testing.T) {
 	)
 }
 
-func TestResults(t *testing.T) {
+func TestDockerTagsResults(t *testing.T) {
 	dir := t.TempDir()
 
 	summaryF, err := os.CreateTemp(dir, "summary")
@@ -480,7 +467,7 @@ func TestResults(t *testing.T) {
 		},
 	}
 
-	setResults(action, result)
+	setDockerTagsResults(action, result)
 
 	expectedStdout := strings.ReplaceAll(`
  |Type        |Image                                                                                                                |

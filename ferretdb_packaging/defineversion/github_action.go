@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package githubaction contains common functions used for GitHub Actions.
-package githubaction
+package main
 
 import (
 	"fmt"
@@ -29,9 +28,9 @@ import (
 // but with a leading `v`.
 var semVerTag = regexp.MustCompile(`^v(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)(?:-(?P<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+(?P<buildmetadata>[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$`)
 
-// DebugEnv logs all environment variables that start with `GITHUB_` or `INPUT_`
+// debugEnv logs all environment variables that start with `GITHUB_` or `INPUT_`
 // in debug level.
-func DebugEnv(action *githubactions.Action) {
+func debugEnv(action *githubactions.Action) {
 	res := make([]string, 0, 30)
 
 	for _, l := range os.Environ() {
@@ -49,10 +48,10 @@ func DebugEnv(action *githubactions.Action) {
 	}
 }
 
-// SemVar parses tag and returns version components.
+// semVar parses tag and returns version components.
 //
 // It returns error for invalid tag syntax, prerelease is missing `ferretdb` or if it has buildmetadata.
-func SemVar(tag string) (major, minor, patch, prerelease string, err error) {
+func semVar(tag string) (major, minor, patch, prerelease string, err error) {
 	match := semVerTag.FindStringSubmatch(tag)
 	if match == nil || len(match) != semVerTag.NumSubexp()+1 {
 		err = fmt.Errorf("unexpected tag syntax %q", tag)

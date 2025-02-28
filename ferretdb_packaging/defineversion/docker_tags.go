@@ -12,36 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package main contains tool for defining Docker image tags on CI.
 package main
 
 import (
-	"flag"
 	"fmt"
+	"github.com/sethvargo/go-githubactions"
 	"regexp"
 	"slices"
 	"strings"
 	"text/tabwriter"
-
-	"github.com/sethvargo/go-githubactions"
-
-	"github.com/FerretDB/documentdb/ferretdb_packaging/internal/githubaction"
 )
-
-func main() {
-	flag.Parse()
-
-	action := githubactions.New()
-
-	githubaction.DebugEnv(action)
-
-	res, err := define(action.Getenv)
-	if err != nil {
-		action.Fatalf("%s", err)
-	}
-
-	setResults(action, res)
-}
 
 // result represents Docker image names and tags extracted from the environment.
 type result struct {
@@ -52,8 +32,8 @@ type result struct {
 // pgVer is the version of PostgreSQL with or without minor.
 var pgVer = regexp.MustCompile(`^(?P<major>0|[1-9]\d*)(?:\.(?P<minor>0|[1-9]\d*))?$`)
 
-// define extracts Docker image names and tags from the environment variables defined by GitHub Actions.
-func define(getenv githubactions.GetenvFunc) (*result, error) {
+// defineDockerTags extracts Docker image names and tags from the environment variables defined by GitHub Actions.
+func defineDockerTags(getenv githubactions.GetenvFunc) (*result, error) {
 	repo := getenv("GITHUB_REPOSITORY")
 
 	// to support GitHub forks
@@ -81,7 +61,7 @@ func define(getenv githubactions.GetenvFunc) (*result, error) {
 
 		case "tag":
 			var major, minor, patch, prerelease string
-			if major, minor, patch, prerelease, err = githubaction.SemVar(refName); err != nil {
+			if major, minor, patch, prerelease, err = semVar(refName); err != nil {
 				return nil, err
 			}
 
@@ -202,8 +182,8 @@ func defineForTag(owner, repo string, tags []string) *result {
 	return res
 }
 
-// setResults sets action output parameters, summary, etc.
-func setResults(action *githubactions.Action, res *result) {
+// setDockerTagsResults sets action output parameters, summary, etc.
+func setDockerTagsResults(action *githubactions.Action, res *result) {
 	var buf strings.Builder
 	w := tabwriter.NewWriter(&buf, 1, 1, 1, ' ', tabwriter.Debug)
 	fmt.Fprintf(w, "\tType\tImage\t\n")

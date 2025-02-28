@@ -23,34 +23,50 @@ import (
 	"strings"
 
 	"github.com/sethvargo/go-githubactions"
-
-	"github.com/FerretDB/documentdb/ferretdb_packaging/internal/githubaction"
 )
 
 func main() {
+	commandF := flag.String("command", "", "command to run, possible values: [deb-version, docker-tags]")
+
 	controlFileF := flag.String("control-file", "../pg_documentdb/documentdb.control", "pg_documentdb/documentdb.control file path")
 
 	flag.Parse()
 
 	action := githubactions.New()
 
-	if *controlFileF == "" {
-		action.Fatalf("%s", "-control-file flag is empty.")
+	debugEnv(action)
+
+	if *commandF == "" {
+		action.Fatalf("-command flag is empty.")
 	}
 
-	controlDefaultVersion, err := getControlDefaultVersion(*controlFileF)
-	if err != nil {
-		action.Fatalf("%s", err)
+	switch *commandF {
+	case "deb-version":
+		if *controlFileF == "" {
+			action.Fatalf("%s", "-control-file flag is empty.")
+		}
+
+		controlDefaultVersion, err := getControlDefaultVersion(*controlFileF)
+		if err != nil {
+			action.Fatalf("%s", err)
+		}
+
+		packageVersion, err := definePackageVersion(controlDefaultVersion, action.Getenv)
+		if err != nil {
+			action.Fatalf("%s", err)
+		}
+
+		setDebianVersionResults(action, packageVersion)
+	case "docker-tags":
+		res, err := defineDockerTags(action.Getenv)
+		if err != nil {
+			action.Fatalf("%s", err)
+		}
+
+		setDockerTagsResults(action, res)
+	default:
+		action.Fatalf("unhandled command %q", *commandF)
 	}
-
-	githubaction.DebugEnv(action)
-
-	packageVersion, err := definePackageVersion(controlDefaultVersion, action.Getenv)
-	if err != nil {
-		action.Fatalf("%s", err)
-	}
-
-	setResults(action, packageVersion)
 }
 
 // controlDefaultVer matches major, minor and "patch" from default_version field in control file,
@@ -150,7 +166,7 @@ func definePackageVersionForBranch(controlDefaultVersion, branch string) (string
 // definePackagerVersionForTag returns valid Debian package version for tag.
 // See [definePackageVersion].
 func definePackagerVersionForTag(tag string) (string, error) {
-	major, minor, patch, prerelease, err := githubaction.SemVar(tag)
+	major, minor, patch, prerelease, err := semVar(tag)
 	if err != nil {
 		return "", err
 	}
@@ -159,8 +175,8 @@ func definePackagerVersionForTag(tag string) (string, error) {
 	return disallowedVer.ReplaceAllString(res, "~"), nil
 }
 
-// setResults sets action output parameters, summary, etc.
-func setResults(action *githubactions.Action, res string) {
+// setDebianVersionResults sets action output parameters, summary, etc.
+func setDebianVersionResults(action *githubactions.Action, res string) {
 	output := fmt.Sprintf("version: %s", res)
 
 	action.AddStepSummary(output)
